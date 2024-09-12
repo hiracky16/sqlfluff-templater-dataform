@@ -4,7 +4,7 @@ version = "3.1.1"
 description = "Lint your dataform project SQL"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
-  {name = "hiracky16", email = "h.piiice16@gmail.com"},
+  {name = "hiracky16"},
 ]
 license = {file = "LICENSE.md"}
 keywords = [
