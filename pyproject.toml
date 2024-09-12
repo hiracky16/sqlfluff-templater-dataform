@@ -1,0 +1,43 @@
+[project]
+name = "sqlfluff-templater-dataform"
+version = "3.1.1"
+description = "Lint your dataform project SQL"
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [
+  {name = "hiracky16", email = "h.piiice16@gmail.com"},
+]
+license = {file = "LICENSE.md"}
+keywords = [
+    "sqlfluff",
+    "sql",
+    "linter",
+    "formatter",
+    "bigquery",
+    "clickhouse",
+    "databricks",
+    "db2",
+    "duckdb",
+    "exasol",
+    "greenplum",
+    "hive",
+    "materialize",
+    "mysql",
+    "postgres",
+    "redshift",
+    "snowflake",
+    "soql",
+    "sparksql",
+    "sqlite",
+    "teradata",
+    "tsql",
+    "dataform",
+]
+dependencies = [
+    "sqlfluff==3.1.1"
+]
+
+[project.entry-points.sqlfluff]
+sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
+
+[tool.setuptools.packages.find]
+include = ["sqlfluff_templater_dataform"]

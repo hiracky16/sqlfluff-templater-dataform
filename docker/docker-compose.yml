@@ -1,0 +1,11 @@
+services:
+  app:
+    platform: linux/amd64
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.dev
+    volumes:
+      # Host source code directory
+      - ../:/app/
+    entrypoint: /bin/bash
+    tty: true
