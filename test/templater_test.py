@@ -22,7 +22,11 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
 # _replace_blocks のテスト
 def test_replace_blocks_single_block(templater):
     input_sql = """config {
-    type: "table"
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
 }
 SELECT * FROM my_table"""
 
@@ -32,7 +36,11 @@ SELECT * FROM my_table"""
 
 def test_replace_blocks_multiple_blocks(templater):
     input_sql = """config {
-    type: "table"
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
 }
 js {
     const myVar = "test";
@@ -78,7 +86,11 @@ SELECT 1 AS value FROM ${ref('test')} WHERE true
 
 def test_slice_sqlx_template_with_multiple_refs(templater):
     input_sqlx = """config {
-    type: "view"
+    type: "view",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
 }
 SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
 """
@@ -130,7 +142,11 @@ def test_slice_sqlx_template_with_no_ref(templater):
 # process (slice_sqlx_template) のテスト
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
-    type: "table"
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
 }
 SELECT * FROM ${ref('test')} WHERE true
 """
@@ -157,7 +173,11 @@ SELECT * FROM ${ref('test')} WHERE true
 
 def test_process_sqlx_with_multiple_refs(templater):
     input_sqlx = """config {
-    type: "view"
+    type: "view",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
 }
 SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
 """
