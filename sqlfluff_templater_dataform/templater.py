@@ -66,12 +66,13 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
-    def _replace_blocks_with_newline(self, in_str: str) -> str:
-        pattern = re.compile(r'(config|js)\s*\{([^}]*)\}', re.DOTALL)
+    def _replace_blocks(self, in_str: str) -> str:
+        pattern = re.compile(r'(config|js)\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
         return re.sub(pattern, '', in_str)
 
     def _replace_ref_with_bq_table(self, sql):
-        pattern = re.compile(r"\${ref\('([^']+)'(?:, '([^']+)')?\)}")
+        # スペースを含む ref 関数呼び出しに対応する正規表現
+        pattern = re.compile(r"\$\{\s*ref\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)\s*\}")
         def ref_to_table(match):
             if match.group(2):
                 dataset = match.group(1)
@@ -86,15 +87,15 @@ class DataformTemplater(RawTemplater):
     # SQLX をスライスして、RawFileSlice と TemplatedFileSlice を同時に返す関数
     def slice_sqlx_template(self, sql: str) -> (str, List[RawFileSlice], List[TemplatedFileSlice]):
         # config や js ブロックを改行に置換
-        replaced_sql = self._replace_blocks_with_newline(sql)
+        replaced_sql = self._replace_blocks(sql)
         # ref 関数をBigQueryテーブル名に置換
         replaced_sql = self._replace_ref_with_bq_table(replaced_sql)
 
         # SQLX の構造に対応する正規表現パターン
         patterns = [
-            (r'config\s*\{[^}]*\}', 'templated'),   # config ブロック
-            (r'js\s*\{[^}]*\}', 'templated'),       # js ブロック
-            (r'\${ref\([^\)]*\)}', 'templated')     # ref 関数
+            (r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),   # config ブロック
+            (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
+            (r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}', 'templated')     # ref 関数
         ]
 
         raw_slices = []  # RawFileSlice のリスト
@@ -149,7 +150,7 @@ class DataformTemplater(RawTemplater):
                 block_idx += 1
 
             # `ref` 関数の置換を適用する
-            if next_match_type == 'templated' and r"${ref(" in next_match.group(0):
+            if next_match_type == 'templated' and r"ref(" in next_match.group(0):
                 ref_replaced = self._replace_ref_with_bq_table(next_match.group(0))
                 raw_slices.append(RawFileSlice(
                     raw=next_match.group(0),

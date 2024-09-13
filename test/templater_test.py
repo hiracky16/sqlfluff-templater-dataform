@@ -19,18 +19,18 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
     result = templater._replace_ref_with_bq_table(input_sql)
     assert result == expected_sql
 
-# _replace_blocks_with_newline のテスト
-def test_replace_blocks_with_newline_single_block(templater):
+# _replace_blocks のテスト
+def test_replace_blocks_single_block(templater):
     input_sql = """config {
     type: "table"
 }
 SELECT * FROM my_table"""
 
     expected_sql = "\nSELECT * FROM my_table"
-    result = templater._replace_blocks_with_newline(input_sql)
+    result = templater._replace_blocks(input_sql)
     assert result == expected_sql
 
-def test_replace_blocks_with_newline_multiple_blocks(templater):
+def test_replace_blocks_multiple_blocks(templater):
     input_sql = """config {
     type: "table"
 }
@@ -40,13 +40,13 @@ js {
 SELECT * FROM my_table"""
 
     expected_sql = "\n\nSELECT * FROM my_table"
-    result = templater._replace_blocks_with_newline(input_sql)
+    result = templater._replace_blocks(input_sql)
     assert result == expected_sql
 
-def test_replace_blocks_with_newline_no_block(templater):
+def test_replace_blocks_no_block(templater):
     input_sql = "SELECT * FROM my_table"
     expected_sql = "SELECT * FROM my_table"
-    result = templater._replace_blocks_with_newline(input_sql)
+    result = templater._replace_blocks(input_sql)
     assert result == expected_sql
 
 # slice_sqlx_template のテスト
