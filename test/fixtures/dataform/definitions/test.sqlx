@@ -1,7 +1,31 @@
 config {
-    type: "table"
+    type: "table",
+    schema: "schama",
+    tags: [
+        "test"
+    ],
+    description: "test sqlx file for lint by sqlfluff-templater-dataform.",
+    columns: {
+        user_id: "ユーザーID",
+        name: "ユーザー名",
+        age: "年齢",
+        order_date: "注文日",
+        order_count: "注文回数"
+    }
 }
--- The rest of a SQLX file contains your
--- SELECT statement used to create the table.
 
-SELECT value AS value FROM ${ref('test')} WHERE true
+WITH users AS (
+select user_id,
+    name,
+        age
+    from ${ref('users')}
+)
+, user_orders AS (
+    select user_id, order_id, DATE(created_at) AS order_date from ${ref('user_orders')}
+)
+SELECt users.user_id, name, age, order_date, count(order_id) AS order_count
+from users left outer join user_orders on users.user_id = user_orders.user_id
+group by user_id
+    , name
+    , age
+    , order_date
