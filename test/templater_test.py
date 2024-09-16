@@ -1,22 +1,37 @@
 """Tests for the dataform templater."""
 import pytest
+from sqlfluff_templater_dataform.templater import UsedJSBlockError
+
+def test_has_js_block(templater):
+    input_sql = """config {
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
+}
+js {
+    const myVar = "test";
+}
+SELECT * FROM my_table"""
+    assert templater.has_js_block(input_sql) == True
 
 def test_replace_ref_with_bq_table_single_ref(templater):
     input_sql = "SELECT * FROM ${ref('test')}"
     expected_sql = "SELECT * FROM `my_project.my_dataset.test`"
-    result = templater._replace_ref_with_bq_table(input_sql)
+    result = templater.replace_ref_with_bq_table(input_sql)
     assert result == expected_sql
 
 def test_replace_ref_with_bq_table_with_dataset(templater):
     input_sql = "SELECT * FROM ${ref('other_dataset', 'test')}"
     expected_sql = "SELECT * FROM `my_project.other_dataset.test`"
-    result = templater._replace_ref_with_bq_table(input_sql)
+    result = templater.replace_ref_with_bq_table(input_sql)
     assert result == expected_sql
 
 def test_replace_ref_with_bq_table_multiple_refs(templater):
     input_sql = "SELECT * FROM ${ref('test')}, ${ref('another')}"
     expected_sql = "SELECT * FROM `my_project.my_dataset.test`, `my_project.my_dataset.another`"
-    result = templater._replace_ref_with_bq_table(input_sql)
+    result = templater.replace_ref_with_bq_table(input_sql)
     assert result == expected_sql
 
 # _replace_blocks のテスト
@@ -31,30 +46,13 @@ def test_replace_blocks_single_block(templater):
 SELECT * FROM my_table"""
 
     expected_sql = "\nSELECT * FROM my_table"
-    result = templater._replace_blocks(input_sql)
-    assert result == expected_sql
-
-def test_replace_blocks_multiple_blocks(templater):
-    input_sql = """config {
-    type: "table",
-    columns: {
-        "test" : "test",
-        "value:: "value"
-    }
-}
-js {
-    const myVar = "test";
-}
-SELECT * FROM my_table"""
-
-    expected_sql = "\n\nSELECT * FROM my_table"
-    result = templater._replace_blocks(input_sql)
+    result = templater.replace_blocks(input_sql)
     assert result == expected_sql
 
 def test_replace_blocks_no_block(templater):
     input_sql = "SELECT * FROM my_table"
     expected_sql = "SELECT * FROM my_table"
-    result = templater._replace_blocks(input_sql)
+    result = templater.replace_blocks(input_sql)
     assert result == expected_sql
 
 # slice_sqlx_template のテスト

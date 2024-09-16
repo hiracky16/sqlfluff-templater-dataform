@@ -10,11 +10,16 @@ from typing import (
 from sqlfluff.core.templaters.base import RawTemplater, TemplatedFile, large_file_check, RawFileSlice, TemplatedFileSlice
 from sqlfluff.cli.formatters import OutputStreamFormatter
 from sqlfluff.core import FluffConfig
+from sqlfluff.core.errors import SQLFluffSkipFile
 
 
 # Instantiate the templater logger
 templater_logger = logging.getLogger("sqlfluff.templater")
 
+class UsedJSBlockError(SQLFluffSkipFile):
+    """ This package does not support dataform js block """
+    """ When js block used, skip linting a file."""
+    pass
 
 class DataformTemplater(RawTemplater):
     """A templater using dataform."""
@@ -54,8 +59,11 @@ class DataformTemplater(RawTemplater):
         config: Optional["FluffConfig"] = None,
         formatter: Optional["OutputStreamFormatter"] = None,
     ):
-        if fname.endswith(".sqlx"):
-            print(f"Processing SQLX file: {fname}")
+        templater_logger.info(in_str)
+        if in_str and self.has_js_block(in_str):
+            print("used js block file: ", fname)
+            raise UsedJSBlockError
+
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
         return TemplatedFile(
@@ -66,11 +74,15 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
-    def _replace_blocks(self, in_str: str) -> str:
-        pattern = re.compile(r'(config|js)\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
+    def has_js_block(self, sql: str) -> bool:
+        pattern = re.compile(r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
+        return bool(pattern.search(sql))
+
+    def replace_blocks(self, in_str: str) -> str:
+        pattern = re.compile(r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
         return re.sub(pattern, '', in_str)
 
-    def _replace_ref_with_bq_table(self, sql):
+    def replace_ref_with_bq_table(self, sql):
         # スペースを含む ref 関数呼び出しに対応する正規表現
         pattern = re.compile(r"\$\{\s*ref\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)\s*\}")
         def ref_to_table(match):
@@ -87,14 +99,14 @@ class DataformTemplater(RawTemplater):
     # SQLX をスライスして、RawFileSlice と TemplatedFileSlice を同時に返す関数
     def slice_sqlx_template(self, sql: str) -> (str, List[RawFileSlice], List[TemplatedFileSlice]):
         # config や js ブロックを改行に置換
-        replaced_sql = self._replace_blocks(sql)
+        replaced_sql = self.replace_blocks(sql)
         # ref 関数をBigQueryテーブル名に置換
-        replaced_sql = self._replace_ref_with_bq_table(replaced_sql)
+        replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
 
         # SQLX の構造に対応する正規表現パターン
         patterns = [
             (r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),   # config ブロック
-            (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
+            # (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
             (r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}', 'templated')     # ref 関数
         ]
 
@@ -151,7 +163,7 @@ class DataformTemplater(RawTemplater):
 
             # `ref` 関数の置換を適用する
             if next_match_type == 'templated' and r"ref(" in next_match.group(0):
-                ref_replaced = self._replace_ref_with_bq_table(next_match.group(0))
+                ref_replaced = self.replace_ref_with_bq_table(next_match.group(0))
                 raw_slices.append(RawFileSlice(
                     raw=next_match.group(0),
                     slice_type='templated',
