@@ -24,3 +24,6 @@ sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
 
 [tool.setuptools.packages.find]
 include = ["sqlfluff_templater_dataform"]
+
+[project.urls]
+Repository = "https://github.com/hiracky16/sqlfluff-templater-dataform.git"
