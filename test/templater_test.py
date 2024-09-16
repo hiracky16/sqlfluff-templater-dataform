@@ -1,9 +1,7 @@
 """Tests for the dataform templater."""
-import pytest
-from sqlfluff_templater_dataform.templater import UsedJSBlockError
 
 def test_has_js_block(templater):
-    input_sql = """config {
+    has_js_sql = """config {
     type: "table",
     columns: {
         "test" : "test",
@@ -14,7 +12,16 @@ js {
     const myVar = "test";
 }
 SELECT * FROM my_table"""
-    assert templater.has_js_block(input_sql) == True
+    not_has_js_sql = """config {
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
+}
+SELECT * FROM my_table"""
+    assert templater.has_js_block(has_js_sql) == True
+    assert templater.has_js_block(not_has_js_sql) == False
 
 def test_replace_ref_with_bq_table_single_ref(templater):
     input_sql = "SELECT * FROM ${ref('test')}"
@@ -34,7 +41,6 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
     result = templater.replace_ref_with_bq_table(input_sql)
     assert result == expected_sql
 
-# _replace_blocks のテスト
 def test_replace_blocks_single_block(templater):
     input_sql = """config {
     type: "table",
@@ -63,19 +69,15 @@ def test_slice_sqlx_template_with_config_and_ref(templater):
 SELECT 1 AS value FROM ${ref('test')} WHERE true
 """
     expected_sql = "\nSELECT 1 AS value FROM `my_project.my_dataset.test` WHERE true\n"
-    # テンプレートを置換したSQLとスライス結果を取得
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
-    # テンプレートを置換したSQLが期待通りであるかを確認
     assert replaced_sql == expected_sql
 
-    # RawFileSlice の検証
     assert len(raw_slices) == 4
     assert raw_slices[0].raw.startswith("config")
     assert raw_slices[1].raw.startswith("\nSELECT 1")
     assert raw_slices[2].raw.startswith('${ref')
     assert raw_slices[3].raw == " WHERE true\n"
 
-    # TemplatedFileSlice の検証
     assert len(templated_slices) == 4
     assert templated_slices[0].slice_type == "templated"
     assert templated_slices[1].slice_type == "literal"
@@ -94,13 +96,10 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 """
     expected_sql = "\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
 
-    # テンプレートを置換したSQLとスライス結果を取得
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
 
-    # テンプレートを置換したSQLが期待通りであるかを確認
     assert replaced_sql == expected_sql
 
-    # RawFileSlice の検証
     assert len(raw_slices) == 6
     assert raw_slices[0].raw.startswith("config")
     assert raw_slices[1].raw.startswith("\nSELECT *")
@@ -109,7 +108,6 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     assert raw_slices[4].raw.startswith('${ref')
     assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
 
-    # TemplatedFileSlice の検証
     assert len(templated_slices) == 6
     assert templated_slices[0].slice_type == "templated"
     assert templated_slices[1].slice_type == "literal"
@@ -123,21 +121,16 @@ def test_slice_sqlx_template_with_no_ref(templater):
 """
     expected_sql = "SELECT * FROM my_table WHERE true\n"
 
-    # テンプレートを置換したSQLとスライス結果を取得
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
-
-    # テンプレートを置換したSQLが期待通りであるかを確認
     assert replaced_sql == expected_sql
 
-    # RawFileSlice の検証
     assert len(raw_slices) == 1
     assert raw_slices[0].raw == "SELECT * FROM my_table WHERE true\n"
 
-    # TemplatedFileSlice の検証
     assert len(templated_slices) == 1
     assert templated_slices[0].slice_type == "literal"
 
-# process (slice_sqlx_template) のテスト
+
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
     type: "table",
@@ -150,19 +143,15 @@ SELECT * FROM ${ref('test')} WHERE true
 """
     expected_sql = "\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n"
 
-    # テンプレートを置換したSQLとスライス結果を取得
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
-    # テンプレートを置換したSQLが期待通りであるかを確認
     assert replaced_sql == expected_sql
 
-    # RawFileSlice の検証
     assert len(raw_slices) == 4
     assert raw_slices[0].raw.startswith("config")
     assert raw_slices[1].raw.startswith("\nSELECT *")
     assert raw_slices[2].raw.startswith("${ref")
     assert raw_slices[3].raw == " WHERE true\n"
 
-    # TemplatedFileSlice の検証
     assert len(templated_slices) == 4
     assert templated_slices[0].slice_type == "templated"
     assert templated_slices[1].slice_type == "literal"
@@ -181,13 +170,10 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 """
     expected_sql = "\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
 
-    # テンプレートを置換したSQLとスライス結果を取得
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
 
-    # テンプレートを置換したSQLが期待通りであるかを確認
     assert replaced_sql == expected_sql
 
-    # RawFileSlice の検証
     assert len(raw_slices) == 6
     assert raw_slices[0].raw.startswith("config")
     assert raw_slices[1].raw.startswith("\nSELECT *")
@@ -196,7 +182,6 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     assert raw_slices[4].raw.startswith("${ref")
     assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
 
-    # TemplatedFileSlice の検証
     assert len(templated_slices) == 6
     assert templated_slices[0].slice_type == "templated"
     assert templated_slices[1].slice_type == "literal"

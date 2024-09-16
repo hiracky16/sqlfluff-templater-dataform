@@ -61,8 +61,7 @@ class DataformTemplater(RawTemplater):
     ):
         templater_logger.info(in_str)
         if in_str and self.has_js_block(in_str):
-            print("used js block file: ", fname)
-            raise UsedJSBlockError
+            raise UsedJSBlockError("JavaScript block is not supported.")
 
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 

@@ -4,4 +4,4 @@ config {
 -- The rest of a SQLX file contains your
 -- SELECT statement used to create the table.
 
-SELECT 1 AS value FROM ${ref('test')} WHERE true
+SELECT value AS value FROM ${ref('test')} WHERE true
