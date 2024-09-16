@@ -25,7 +25,4 @@ select user_id,
 )
 SELECt users.user_id, name, age, order_date, count(order_id) AS order_count
 from users left outer join user_orders on users.user_id = user_orders.user_id
-group by user_id
-    , name
-    , age
-    , order_date
+group by user_id, name, age, order_date
