@@ -19,12 +19,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # 必要に応じてバージョンを変更
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt # `requirements.txt`に必要なパッケージを記述している場合
+          pip install -r requirements.txt
 
       - name: Run pytest
         run: |
