@@ -31,3 +31,4 @@ types-tqdm
 requests
 ghapi
 yamllint
+sqlfluff==3.2.0

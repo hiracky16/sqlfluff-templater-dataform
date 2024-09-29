@@ -1,6 +1,6 @@
 [project]
 name = "sqlfluff-templater-dataform"
-version = "0.1.0"
+version = "0.1.1"
 description = "Lint your dataform project SQL"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
@@ -16,7 +16,7 @@ keywords = [
     "dataform",
 ]
 dependencies = [
-    "sqlfluff==3.1.1"
+    "sqlfluff==3.2.0"
 ]
 
 [project.entry-points.sqlfluff]
