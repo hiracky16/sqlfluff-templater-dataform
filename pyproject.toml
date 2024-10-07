@@ -16,7 +16,7 @@ keywords = [
     "dataform",
 ]
 dependencies = [
-    "sqlfluff==3.2.0"
+    "sqlfluff==3.2.2"
 ]
 
 [project.entry-points.sqlfluff]
