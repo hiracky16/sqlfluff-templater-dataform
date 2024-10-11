@@ -10,7 +10,7 @@ def config():
 
 @pytest.fixture
 def templater(config):
-    temp = config.get_templater("dataform")
+    temp = config.get_templater(templater_name="dataform")
     # NOTE: The patch will be applied as it is not being updated.
     temp.project_id = 'my_project'
     temp.dataset_id = 'my_dataset'
