@@ -193,9 +193,9 @@ class DataformTemplater(RawTemplater):
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
                     source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
-                    templated_slice=slice(templated_idx, templated_idx + 40)
+                    templated_slice=slice(templated_idx, templated_idx + 41)
                 ))
-                templated_idx += 40
+                templated_idx += 41
             else:
                 raw_slices.append(RawFileSlice(
                     raw=next_match.group(0),

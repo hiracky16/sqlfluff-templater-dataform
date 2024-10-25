@@ -178,7 +178,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 
     assert re.match(expected_sql, replaced_sql)
 
-    assert len(raw_slices) == 12
+    assert len(raw_slices) == 14
     assert raw_slices[0].raw.startswith("config")
     assert raw_slices[2].raw.startswith("js")
     assert raw_slices[4].raw.startswith("pre_operations")
@@ -187,9 +187,11 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     assert raw_slices[8].raw.startswith('${ref')
     assert raw_slices[9].raw.startswith(' JOIN')
     assert raw_slices[10].raw.startswith('${ref')
-    assert re.match(r" ON test.id = other_table.id AND test.name = \$\{hoge}\n", raw_slices[11].raw)
+    assert raw_slices[11].raw.startswith(" ON test.id = other_table.id AND test.name = ")
+    assert raw_slices[12].raw.startswith('${hoge}')
+    assert raw_slices[13].raw.startswith('\n')
 
-    assert len(templated_slices) == 12
+    assert len(templated_slices) == 14
     assert templated_slices[0].slice_type == "templated"
     assert templated_slices[1].slice_type == "literal"
     assert templated_slices[2].slice_type == "templated"
@@ -202,6 +204,8 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     assert templated_slices[9].slice_type == "literal"
     assert templated_slices[10].slice_type == "templated"
     assert templated_slices[11].slice_type == "literal"
+    assert templated_slices[12].slice_type == "templated"
+    assert templated_slices[13].slice_type == "literal"
 
 
 def test_slice_sqlx_template_with_no_ref(templater):
