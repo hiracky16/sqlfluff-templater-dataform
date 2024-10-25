@@ -2,31 +2,25 @@ import logging
 import os
 import os.path
 import re
+import uuid
 from typing import (
     Iterator,
     List,
-    Optional,
-)
-from sqlfluff.core.templaters.base import RawTemplater, TemplatedFile, large_file_check, RawFileSlice, TemplatedFileSlice
+    Optional, Tuple, )
+
 from sqlfluff.cli.formatters import OutputStreamFormatter
 from sqlfluff.core import FluffConfig
-from sqlfluff.core.errors import SQLFluffSkipFile
-
+from sqlfluff.core.templaters.base import RawTemplater, TemplatedFile, large_file_check, RawFileSlice, \
+    TemplatedFileSlice
 
 # Instantiate the templater logger
 templater_logger = logging.getLogger("sqlfluff.templater")
-
-class UsedJSBlockError(SQLFluffSkipFile):
-    """ This package does not support dataform js block """
-    """ When js block used, skip linting a file."""
-    pass
 
 class DataformTemplater(RawTemplater):
     """A templater using dataform."""
 
     name = "dataform"
     sequential_fail_limit = 3
-    adapters = {}
 
     def __init__(self, **kwargs):
         self.sqlfluff_config = None
@@ -59,10 +53,6 @@ class DataformTemplater(RawTemplater):
         config: Optional["FluffConfig"] = None,
         formatter: Optional["OutputStreamFormatter"] = None,
     ):
-        templater_logger.info(in_str)
-        if in_str and self.has_js_block(in_str):
-            raise UsedJSBlockError("JavaScript block is not supported.")
-
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
         return TemplatedFile(
@@ -73,12 +63,8 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
-    def has_js_block(self, sql: str) -> bool:
-        pattern = re.compile(r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
-        return bool(pattern.search(sql))
-
-    def replace_blocks(self, in_str: str) -> str:
-        pattern = re.compile(r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
+    def replace_blocks(self, in_str: str, block_name: str) -> str:
+        pattern = re.compile(block_name + r'\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
         return re.sub(pattern, '', in_str)
 
     def replace_ref_with_bq_table(self, sql):
@@ -95,17 +81,38 @@ class DataformTemplater(RawTemplater):
 
         return re.sub(pattern, ref_to_table, sql)
 
+    def extract_templates(self, sql):
+        pattern = re.compile(r'\$\s*\{(?:[^{}]|\{[^{}]*})*}', re.DOTALL)
+        return [m.group() for m in re.finditer(pattern, sql)]
+
+    def replace_templates(self, sql):
+        remaining_text = sql
+        expressions = self.extract_templates(sql)
+        for expression in expressions:
+            # https://github.com/sqlfluff/sqlfluff/issues/1540#issuecomment-1110835283
+            mask_string = "a" + str(uuid.uuid1()).replace("-", ".a")
+            remaining_text = remaining_text.replace(expression, mask_string)
+        return remaining_text
+
     # SQLX をスライスして、RawFileSlice と TemplatedFileSlice を同時に返す関数
-    def slice_sqlx_template(self, sql: str) -> (str, List[RawFileSlice], List[TemplatedFileSlice]):
+    def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         # config や js ブロックを改行に置換
-        replaced_sql = self.replace_blocks(sql)
+        replaced_sql = sql
+        for block_name in ['config', 'js', 'pre_operations', 'post_operations']:
+            replaced_sql = self.replace_blocks(replaced_sql, block_name)
+
         # ref 関数をBigQueryテーブル名に置換
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
+
+        # ${} を置換
+        replaced_sql = self.replace_templates(replaced_sql)
 
         # SQLX の構造に対応する正規表現パターン
         patterns = [
             (r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),   # config ブロック
-            # (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
+            (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
+            (r'pre_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # pre_operations ブロック
+            (r'post_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # post_operations ブロック
             (r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}', 'templated')     # ref 関数
         ]
 
