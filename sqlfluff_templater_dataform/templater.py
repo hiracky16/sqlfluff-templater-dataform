@@ -69,7 +69,7 @@ class DataformTemplater(RawTemplater):
 
     def replace_ref_with_bq_table(self, sql):
         # スペースを含む ref 関数呼び出しに対応する正規表現
-        pattern = re.compile(r"\$\{\s*ref\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)\s*\}")
+        pattern = re.compile(r"\$\{\s*ref\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]+)['\"])?\s*\)\s*\}")
         def ref_to_table(match):
             if match.group(2):
                 dataset = match.group(1)
@@ -113,7 +113,7 @@ class DataformTemplater(RawTemplater):
             (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
             (r'pre_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # pre_operations ブロック
             (r'post_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # post_operations ブロック
-            (r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}', 'templated'),    # ref 関数
+            (r"\$\{\s*ref\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]+)['\"])?\s*\)\s*\}", 'templated'),    # ref 関数
             (r'\$\s*\{(?:[^{}]|\{[^{}]*})*}', 'templated') # $関数
         ]
 

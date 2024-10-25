@@ -170,9 +170,9 @@ post_operations {
       TO "group:allusers@example.com", "user:otheruser@example.com"
 }
 
-SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id AND test.name = ${hoge}
+SELECT * FROM ${ref('test')} JOIN ${ref("other_dataset", "other_table")} ON test.id = other_table.id AND test.name = ${hoge}
 """
-    expected_sql = r"\s+SELECT \* FROM `my_project\.my_dataset\.test` JOIN `my_project\.my_dataset\.other_table` ON test\.id = other_table\.id AND test\.name = a.+\n"
+    expected_sql = r"\s+SELECT \* FROM `my_project\.my_dataset\.test` JOIN `my_project\.other_dataset\.other_table` ON test\.id = other_table\.id AND test\.name = a.+\n"
 
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
 
