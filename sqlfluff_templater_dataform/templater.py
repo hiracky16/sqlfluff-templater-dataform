@@ -63,9 +63,35 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
+    def extract_blocks(self, text, block_name: str):
+
+        block_start_match = re.search(block_name + r"\s*\{", text)
+        if block_start_match is None:
+            return None, None, None
+
+        block_start_start, block_start_end = block_start_match.span()
+        num_brackets = 1
+        num_chars = block_start_end - block_start_start
+        for char in text[block_start_end:]:
+            if char == "{":
+                num_brackets += 1
+            elif char == "}":
+                num_brackets -= 1
+            num_chars += 1
+            if num_brackets == 0:
+                break
+        return text[block_start_start:block_start_start + num_chars], block_start_start, block_start_start + num_chars
+
     def replace_blocks(self, in_str: str, block_name: str) -> str:
-        pattern = re.compile(block_name + r'\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
-        return re.sub(pattern, '', in_str)
+        match_text, block_start_start, block_start_end = self.extract_blocks(in_str, block_name)
+        if match_text is None:
+            return in_str
+
+        block_start_match = re.search(block_name + r"\s+\{", in_str)
+        if block_start_match is None:
+            return in_str
+
+        return in_str.replace(match_text, '')
 
     def replace_ref_with_bq_table(self, sql):
         # スペースを含む ref 関数呼び出しに対応する正規表現
@@ -107,13 +133,13 @@ class DataformTemplater(RawTemplater):
         # ${} を置換
         replaced_sql = self.replace_templates(replaced_sql)
 
-        # SQLX の構造に対応する正規表現パターン
-        patterns = [
-            (r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),   # config ブロック
-            (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
-            (r'pre_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # pre_operations ブロック
-            (r'post_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # post_operations ブロック
-            (r'\$\s*\{(?:[^{}]|\{[^{}]*})*}', 'templated') # $関数
+        # SQLX の構造に対応するブロック名
+        blocks = [
+            ('config', 'templated'),   # config ブロック
+            ('js', 'templated'),       # js ブロック
+            ('pre_operations', 'templated'),  # pre_operations ブロック
+            ('post_operations', 'templated'),  # post_operations ブロック
+            ('\\$', 'templated'), # $関数
         ]
 
         raw_slices = []  # RawFileSlice のリスト
@@ -124,20 +150,25 @@ class DataformTemplater(RawTemplater):
 
         # SQLX 全体をスキャンしてスライスを作成
         while current_idx < len(sql):
-            next_match = None
+            next_match_text = None
             next_match_type = None
+            next_match_start = 0
+            next_match_end = 0
 
             # 各パターンで最初にマッチする箇所を探す
-            for pattern, match_type in patterns:
-                match = re.search(pattern, sql[current_idx:])
-                if match:
-                    match_start = current_idx + match.start()
-                    if not next_match or match_start < next_match.start():
-                        next_match = match
+            for block_name, match_type in blocks:
+
+                match_text, start, end = self.extract_blocks(sql[current_idx:], block_name)
+                if match_text:
+                    match_start = current_idx + start
+                    if not next_match_text or match_start < next_match_start:
+                        next_match_text = match_text
                         next_match_type = match_type
+                        next_match_start = start
+                        next_match_end = end
 
             # マッチするものがない場合、残りはリテラルとして追加
-            if not next_match:
+            if not next_match_text:
                 raw_slices.append(RawFileSlice(
                     raw=sql[current_idx:],
                     slice_type='literal',
@@ -152,64 +183,64 @@ class DataformTemplater(RawTemplater):
                 break
 
             # リテラル部分を追加（マッチした部分の手前までの内容を追加）
-            if next_match.start() > 0:
+            if next_match_start > 0:
                 raw_slices.append(RawFileSlice(
-                    raw=sql[current_idx:next_match.start() + current_idx],
+                    raw=sql[current_idx:next_match_start + current_idx],
                     slice_type='literal',
                     source_idx=current_idx,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type='literal',
-                    source_slice=slice(current_idx, next_match.start() + current_idx),
-                    templated_slice=slice(templated_idx, templated_idx + next_match.start())
+                    source_slice=slice(current_idx, next_match_start + current_idx),
+                    templated_slice=slice(templated_idx, templated_idx + next_match_start)
                 ))
-                templated_idx += next_match.start()
+                templated_idx += next_match_start
                 block_idx += 1
 
             # `ref` 関数の置換を適用する
-            if next_match_type == 'templated' and r"ref(" in next_match.group(0):
-                ref_replaced = self.replace_ref_with_bq_table(next_match.group(0))
+            if next_match_type == 'templated' and next_match_text.startswith("${") and r"ref(" in next_match_text:
+                ref_replaced = self.replace_ref_with_bq_table(next_match_text)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=next_match_text,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=current_idx + next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(current_idx + next_match_start, current_idx + next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
-            elif next_match_type == 'templated' and r"${" in next_match.group(0):
+            elif next_match_type == 'templated' and next_match_text.startswith("${"):
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=next_match_text,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=current_idx + next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(current_idx + next_match_start, current_idx + next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + 41)
                 ))
                 templated_idx += 41
             else:
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=next_match_text,
                     slice_type=next_match_type,
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=current_idx + next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(current_idx + next_match_start, current_idx + next_match_end),
                     templated_slice=slice(templated_idx, templated_idx)
                 ))
 
             # インデックスを次のマッチの終わりに移動
-            current_idx = current_idx + next_match.end()
+            current_idx = current_idx + next_match_end
             block_idx += 1
 
         # 置換済みのSQLと、スライス情報を返す
