@@ -113,7 +113,6 @@ class DataformTemplater(RawTemplater):
             (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
             (r'pre_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # pre_operations ブロック
             (r'post_operations\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),  # post_operations ブロック
-            (r"\$\{\s*ref\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]+)['\"])?\s*\)\s*\}", 'templated'),    # ref 関数
             (r'\$\s*\{(?:[^{}]|\{[^{}]*})*}', 'templated') # $関数
         ]
 
