@@ -2,31 +2,25 @@ import logging
 import os
 import os.path
 import re
+import uuid
 from typing import (
     Iterator,
     List,
-    Optional,
-)
-from sqlfluff.core.templaters.base import RawTemplater, TemplatedFile, large_file_check, RawFileSlice, TemplatedFileSlice
+    Optional, Tuple, )
+
 from sqlfluff.cli.formatters import OutputStreamFormatter
 from sqlfluff.core import FluffConfig
-from sqlfluff.core.errors import SQLFluffSkipFile
-
+from sqlfluff.core.templaters.base import RawTemplater, TemplatedFile, large_file_check, RawFileSlice, \
+    TemplatedFileSlice
 
 # Instantiate the templater logger
 templater_logger = logging.getLogger("sqlfluff.templater")
-
-class UsedJSBlockError(SQLFluffSkipFile):
-    """ This package does not support dataform js block """
-    """ When js block used, skip linting a file."""
-    pass
 
 class DataformTemplater(RawTemplater):
     """A templater using dataform."""
 
     name = "dataform"
     sequential_fail_limit = 3
-    adapters = {}
 
     def __init__(self, **kwargs):
         self.sqlfluff_config = None
@@ -59,10 +53,6 @@ class DataformTemplater(RawTemplater):
         config: Optional["FluffConfig"] = None,
         formatter: Optional["OutputStreamFormatter"] = None,
     ):
-        templater_logger.info(in_str)
-        if in_str and self.has_js_block(in_str):
-            raise UsedJSBlockError("JavaScript block is not supported.")
-
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
         return TemplatedFile(
@@ -73,17 +63,39 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
-    def has_js_block(self, sql: str) -> bool:
-        pattern = re.compile(r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
-        return bool(pattern.search(sql))
+    def extract_blocks(self, text, block_name: str):
 
-    def replace_blocks(self, in_str: str) -> str:
-        pattern = re.compile(r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
-        return re.sub(pattern, '', in_str)
+        block_start_match = re.search(block_name + r"\s*\{", text)
+        if block_start_match is None:
+            return None, None, None
+
+        block_start_start, block_start_end = block_start_match.span()
+        num_brackets = 1
+        num_chars = block_start_end - block_start_start
+        for char in text[block_start_end:]:
+            if char == "{":
+                num_brackets += 1
+            elif char == "}":
+                num_brackets -= 1
+            num_chars += 1
+            if num_brackets == 0:
+                break
+        return text[block_start_start:block_start_start + num_chars], block_start_start, block_start_start + num_chars
+
+    def replace_blocks(self, in_str: str, block_name: str) -> str:
+        match_text, block_start_start, block_start_end = self.extract_blocks(in_str, block_name)
+        if match_text is None:
+            return in_str
+
+        block_start_match = re.search(block_name + r"\s+\{", in_str)
+        if block_start_match is None:
+            return in_str
+
+        return in_str.replace(match_text, '')
 
     def replace_ref_with_bq_table(self, sql):
         # スペースを含む ref 関数呼び出しに対応する正規表現
-        pattern = re.compile(r"\$\{\s*ref\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)\s*\}")
+        pattern = re.compile(r"\$\{\s*ref\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]+)['\"])?\s*\)\s*\}")
         def ref_to_table(match):
             if match.group(2):
                 dataset = match.group(1)
@@ -95,18 +107,52 @@ class DataformTemplater(RawTemplater):
 
         return re.sub(pattern, ref_to_table, sql)
 
+    def extract_templates(self, sql):
+
+        expressions = []
+        current_idx = 0
+        while True:
+            expression, start, end = self.extract_blocks(sql[current_idx:], "\\$")
+            if expression is None:
+                break
+            expressions.append(expression)
+            if "${" in expression[2:len(expression) - 1]:
+                nested_expressions = self.extract_templates(expression[2:len(expression) - 1])
+                expressions.extend(nested_expressions)
+
+            current_idx += end
+
+        return sorted(expressions, key=len, reverse=True)
+
+    def replace_templates(self, sql):
+        replaced_text = sql
+        expressions = self.extract_templates(sql)
+        for expression in expressions:
+            # https://github.com/sqlfluff/sqlfluff/issues/1540#issuecomment-1110835283
+            mask_string = "a" + str(uuid.uuid1()).replace("-", ".a")
+            replaced_text = replaced_text.replace(expression, mask_string)
+        return replaced_text
+
     # SQLX をスライスして、RawFileSlice と TemplatedFileSlice を同時に返す関数
-    def slice_sqlx_template(self, sql: str) -> (str, List[RawFileSlice], List[TemplatedFileSlice]):
+    def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         # config や js ブロックを改行に置換
-        replaced_sql = self.replace_blocks(sql)
+        replaced_sql = sql
+        for block_name in ['config', 'js', 'pre_operations', 'post_operations']:
+            replaced_sql = self.replace_blocks(replaced_sql, block_name)
+
         # ref 関数をBigQueryテーブル名に置換
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
 
-        # SQLX の構造に対応する正規表現パターン
-        patterns = [
-            (r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),   # config ブロック
-            # (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
-            (r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}', 'templated')     # ref 関数
+        # ${} を置換
+        replaced_sql = self.replace_templates(replaced_sql)
+
+        # SQLX の構造に対応するブロック名
+        blocks = [
+            ('config', 'templated'),   # config ブロック
+            ('js', 'templated'),       # js ブロック
+            ('pre_operations', 'templated'),  # pre_operations ブロック
+            ('post_operations', 'templated'),  # post_operations ブロック
+            ('\\$', 'templated'), # $関数
         ]
 
         raw_slices = []  # RawFileSlice のリスト
@@ -117,20 +163,25 @@ class DataformTemplater(RawTemplater):
 
         # SQLX 全体をスキャンしてスライスを作成
         while current_idx < len(sql):
-            next_match = None
+            next_match_text = None
             next_match_type = None
+            next_match_start = 0
+            next_match_end = 0
 
             # 各パターンで最初にマッチする箇所を探す
-            for pattern, match_type in patterns:
-                match = re.search(pattern, sql[current_idx:])
-                if match:
-                    match_start = current_idx + match.start()
-                    if not next_match or match_start < next_match.start():
-                        next_match = match
+            for block_name, match_type in blocks:
+
+                match_text, start, end = self.extract_blocks(sql[current_idx:], block_name)
+                if match_text:
+                    match_start = current_idx + start
+                    if not next_match_text or match_start < next_match_start:
+                        next_match_text = match_text
                         next_match_type = match_type
+                        next_match_start = start
+                        next_match_end = end
 
             # マッチするものがない場合、残りはリテラルとして追加
-            if not next_match:
+            if not next_match_text:
                 raw_slices.append(RawFileSlice(
                     raw=sql[current_idx:],
                     slice_type='literal',
@@ -145,51 +196,64 @@ class DataformTemplater(RawTemplater):
                 break
 
             # リテラル部分を追加（マッチした部分の手前までの内容を追加）
-            if next_match.start() > 0:
+            if next_match_start > 0:
                 raw_slices.append(RawFileSlice(
-                    raw=sql[current_idx:next_match.start() + current_idx],
+                    raw=sql[current_idx:next_match_start + current_idx],
                     slice_type='literal',
                     source_idx=current_idx,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type='literal',
-                    source_slice=slice(current_idx, next_match.start() + current_idx),
-                    templated_slice=slice(templated_idx, templated_idx + next_match.start())
+                    source_slice=slice(current_idx, next_match_start + current_idx),
+                    templated_slice=slice(templated_idx, templated_idx + next_match_start)
                 ))
-                templated_idx += next_match.start()
+                templated_idx += next_match_start
                 block_idx += 1
 
             # `ref` 関数の置換を適用する
-            if next_match_type == 'templated' and r"ref(" in next_match.group(0):
-                ref_replaced = self.replace_ref_with_bq_table(next_match.group(0))
+            if next_match_type == 'templated' and next_match_text.startswith("${") and r"ref(" in next_match_text:
+                ref_replaced = self.replace_ref_with_bq_table(next_match_text)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=next_match_text,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=current_idx + next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(current_idx + next_match_start, current_idx + next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
-            else:
+            elif next_match_type == 'templated' and next_match_text.startswith("${"):
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
-                    slice_type=next_match_type,
-                    source_idx=current_idx + next_match.start(),
+                    raw=next_match_text,
+                    slice_type='templated',
+                    source_idx=current_idx + next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(current_idx + next_match_start, current_idx + next_match_end),
+                    templated_slice=slice(templated_idx, templated_idx + 41)
+                ))
+                templated_idx += 41
+            else:
+                raw_slices.append(RawFileSlice(
+                    raw=next_match_text,
+                    slice_type=next_match_type,
+                    source_idx=current_idx + next_match_start,
+                    block_idx=block_idx
+                ))
+                templated_slices.append(TemplatedFileSlice(
+                    slice_type=next_match_type,
+                    source_slice=slice(current_idx + next_match_start, current_idx + next_match_end),
                     templated_slice=slice(templated_idx, templated_idx)
                 ))
 
             # インデックスを次のマッチの終わりに移動
-            current_idx = current_idx + next_match.end()
+            current_idx = current_idx + next_match_end
             block_idx += 1
 
         # 置換済みのSQLと、スライス情報を返す
