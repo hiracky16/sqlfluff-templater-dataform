@@ -108,17 +108,30 @@ class DataformTemplater(RawTemplater):
         return re.sub(pattern, ref_to_table, sql)
 
     def extract_templates(self, sql):
-        pattern = re.compile(r'\$\s*\{(?:[^{}]|\{[^{}]*})*}', re.DOTALL)
-        return [m.group() for m in re.finditer(pattern, sql)]
+
+        expressions = []
+        current_idx = 0
+        while True:
+            expression, start, end = self.extract_blocks(sql[current_idx:], "\\$")
+            if expression is None:
+                break
+            expressions.append(expression)
+            if "${" in expression[2:len(expression) - 1]:
+                nested_expressions = self.extract_templates(expression[2:len(expression) - 1])
+                expressions.extend(nested_expressions)
+
+            current_idx += end
+
+        return sorted(expressions, key=len, reverse=True)
 
     def replace_templates(self, sql):
-        remaining_text = sql
+        replaced_text = sql
         expressions = self.extract_templates(sql)
         for expression in expressions:
             # https://github.com/sqlfluff/sqlfluff/issues/1540#issuecomment-1110835283
             mask_string = "a" + str(uuid.uuid1()).replace("-", ".a")
-            remaining_text = remaining_text.replace(expression, mask_string)
-        return remaining_text
+            replaced_text = replaced_text.replace(expression, mask_string)
+        return replaced_text
 
     # SQLX をスライスして、RawFileSlice と TemplatedFileSlice を同時に返す関数
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
