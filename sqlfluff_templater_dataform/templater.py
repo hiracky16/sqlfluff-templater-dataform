@@ -16,6 +16,11 @@ from sqlfluff.core.errors import SQLFluffSkipFile
 # Instantiate the templater logger
 templater_logger = logging.getLogger("sqlfluff.templater")
 
+# regex pattern for config block and js block
+CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
+JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
+REF_PATTERN = r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}'
+
 class UsedJSBlockError(SQLFluffSkipFile):
     """ This package does not support dataform js block """
     """ When js block used, skip linting a file."""
@@ -74,16 +79,16 @@ class DataformTemplater(RawTemplater):
         ), []
 
     def has_js_block(self, sql: str) -> bool:
-        pattern = re.compile(r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
+        pattern = re.compile(JS_BLOCK_PATTERN, re.DOTALL)
         return bool(pattern.search(sql))
 
     def replace_blocks(self, in_str: str) -> str:
-        pattern = re.compile(r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
+        pattern = re.compile(CONFIG_BLOCK_PATTERN, re.DOTALL)
         return re.sub(pattern, '', in_str)
 
     def replace_ref_with_bq_table(self, sql):
         # スペースを含む ref 関数呼び出しに対応する正規表現
-        pattern = re.compile(r"\$\{\s*ref\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)\s*\}")
+        pattern = re.compile(REF_PATTERN)
         def ref_to_table(match):
             if match.group(2):
                 dataset = match.group(1)
@@ -104,9 +109,9 @@ class DataformTemplater(RawTemplater):
 
         # SQLX の構造に対応する正規表現パターン
         patterns = [
-            (r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),   # config ブロック
-            # (r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}', 'templated'),       # js ブロック
-            (r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}', 'templated')     # ref 関数
+            (CONFIG_BLOCK_PATTERN, 'templated'),   # config ブロック
+            # (JS_BLOCK_PATTERN, 'templated'),       # js ブロック
+            (REF_PATTERN, 'templated')     # ref 関数
         ]
 
         raw_slices = []  # RawFileSlice のリスト
