@@ -17,7 +17,7 @@ from sqlfluff.core.errors import SQLFluffSkipFile
 templater_logger = logging.getLogger("sqlfluff.templater")
 
 # regex pattern for config block and js block
-CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{[^{}]*\})*\}'
+CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 REF_PATTERN = r'\$\{\s*ref\(\s*\'([^\']+)\'(?:\s*,\s*\'([^\']+)\')?\s*\)\s*\}'
 
