@@ -46,7 +46,7 @@ class DataformTemplater(RawTemplater):
         self, fnames: List[str], config=None, formatter=None
     ) -> Iterator[str]:
         self.sqlfluff_config = config
-        # sqlfluff_config がこの段階で入ってくるのでデフォルトの project_id と dataset_id をセット
+        # NOTE: The sqlfluff_config will be introduced at this stage, so the default project_id and dataset_id will be set.
         self.project_id = self.sqlfluff_config.get_section(
             (self.templater_selector, self.name, "project_id")
         )
@@ -87,7 +87,7 @@ class DataformTemplater(RawTemplater):
         return re.sub(pattern, '', in_str)
 
     def replace_ref_with_bq_table(self, sql):
-        # スペースを含む ref 関数呼び出しに対応する正規表現
+        """ A regular expression to handle ref function calls that include spaces. """
         pattern = re.compile(REF_PATTERN)
         def ref_to_table(match):
             if match.group(2):
@@ -100,32 +100,28 @@ class DataformTemplater(RawTemplater):
 
         return re.sub(pattern, ref_to_table, sql)
 
-    # SQLX をスライスして、RawFileSlice と TemplatedFileSlice を同時に返す関数
     def slice_sqlx_template(self, sql: str) -> (str, List[RawFileSlice], List[TemplatedFileSlice]):
-        # config や js ブロックを改行に置換
+        """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
         replaced_sql = self.replace_blocks(sql)
-        # ref 関数をBigQueryテーブル名に置換
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
 
-        # SQLX の構造に対応する正規表現パターン
+        # A regular expression pattern that matches the structure of SQLX.
         patterns = [
-            (CONFIG_BLOCK_PATTERN, 'templated'),   # config ブロック
-            # (JS_BLOCK_PATTERN, 'templated'),       # js ブロック
-            (REF_PATTERN, 'templated')     # ref 関数
+            (CONFIG_BLOCK_PATTERN, 'templated'),   # config block
+            # (JS_BLOCK_PATTERN, 'templated'),       # js block
+            (REF_PATTERN, 'templated')     # ref function
         ]
 
-        raw_slices = []  # RawFileSlice のリスト
-        templated_slices = []  # TemplatedFileSlice のリスト
+        raw_slices = []
+        templated_slices = []
         current_idx = 0
-        templated_idx = 0  # テンプレート後のインデックス
+        templated_idx = 0
         block_idx = 0
 
-        # SQLX 全体をスキャンしてスライスを作成
         while current_idx < len(sql):
             next_match = None
             next_match_type = None
 
-            # 各パターンで最初にマッチする箇所を探す
             for pattern, match_type in patterns:
                 match = re.search(pattern, sql[current_idx:])
                 if match:
@@ -134,7 +130,6 @@ class DataformTemplater(RawTemplater):
                         next_match = match
                         next_match_type = match_type
 
-            # マッチするものがない場合、残りはリテラルとして追加
             if not next_match:
                 raw_slices.append(RawFileSlice(
                     raw=sql[current_idx:],
@@ -149,7 +144,6 @@ class DataformTemplater(RawTemplater):
                 ))
                 break
 
-            # リテラル部分を追加（マッチした部分の手前までの内容を追加）
             if next_match.start() > 0:
                 raw_slices.append(RawFileSlice(
                     raw=sql[current_idx:next_match.start() + current_idx],
@@ -165,7 +159,6 @@ class DataformTemplater(RawTemplater):
                 templated_idx += next_match.start()
                 block_idx += 1
 
-            # `ref` 関数の置換を適用する
             if next_match_type == 'templated' and r"ref(" in next_match.group(0):
                 ref_replaced = self.replace_ref_with_bq_table(next_match.group(0))
                 raw_slices.append(RawFileSlice(
@@ -193,9 +186,7 @@ class DataformTemplater(RawTemplater):
                     templated_slice=slice(templated_idx, templated_idx)
                 ))
 
-            # インデックスを次のマッチの終わりに移動
             current_idx = current_idx + next_match.end()
             block_idx += 1
 
-        # 置換済みのSQLと、スライス情報を返す
         return replaced_sql, raw_slices, templated_slices
