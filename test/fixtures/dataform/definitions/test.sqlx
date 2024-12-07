@@ -18,7 +18,7 @@ WITH users AS (
 select user_id,
     name,
         age
-    from ${ref('users')}
+    from ${ref("users")}
 )
 , user_orders AS (
     select user_id, order_id, DATE(created_at) AS order_date from ${ref('user_orders')}
