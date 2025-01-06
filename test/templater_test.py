@@ -185,8 +185,6 @@ GROUP BY test
     assert templated_slices[6].slice_type == "templated"
     assert templated_slices[7].slice_type == "literal"
 
-
-
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
     type: "table",
@@ -213,3 +211,35 @@ SELECT * FROM ${ref('test')} WHERE true
     assert templated_slices[1].slice_type == "literal"
     assert templated_slices[2].slice_type == "templated"
     assert templated_slices[3].slice_type == "literal"
+
+def test_process_sqlx_with_multiple_refs(templater):
+    input_sqlx = """config {
+    type: "view",
+    columns: {
+        "test" : "test",
+        "value:: "value"
+    }
+}
+SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
+"""
+    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
+
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+
+    assert replaced_sql == expected_sql
+
+    assert len(raw_slices) == 6
+    assert raw_slices[0].raw.startswith("config")
+    assert raw_slices[1].raw.startswith("\nSELECT *")
+    assert raw_slices[2].raw.startswith("${ref")
+    assert raw_slices[3].raw.startswith(" JOIN")
+    assert raw_slices[4].raw.startswith("${ref")
+    assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
+
+    assert len(templated_slices) == 6
+    assert templated_slices[0].slice_type == "templated"
+    assert templated_slices[1].slice_type == "literal"
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[3].slice_type == "literal"
+    assert templated_slices[4].slice_type == "templated"
+    assert templated_slices[5].slice_type == "literal"
