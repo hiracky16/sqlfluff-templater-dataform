@@ -21,7 +21,7 @@ templater_logger = logging.getLogger("sqlfluff.templater")
 CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 REF_PATTERN = r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}'
-INCREMENTAL_CONDITION_PATTERN = r'\$\{when\(incremental\(\),\s*(?:`.*?`|[^{}]*)\)}'
+INCREMENTAL_CONDITION_PATTERN = r'\$\{when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)}'
 
 class UsedJSBlockError(SQLFluffSkipFile):
     """ This package does not support dataform js block """
