@@ -6,6 +6,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
 )
 from sqlfluff.core.templaters.base import RawTemplater, TemplatedFile, large_file_check, RawFileSlice, TemplatedFileSlice
 from sqlfluff.cli.formatters import OutputStreamFormatter
@@ -20,6 +21,7 @@ templater_logger = logging.getLogger("sqlfluff.templater")
 CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 REF_PATTERN = r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}'
+INCREMENTAL_CONDITION_PATTERN = r'\$\{when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)}'
 
 class UsedJSBlockError(SQLFluffSkipFile):
     """ This package does not support dataform js block """
@@ -44,7 +46,7 @@ class DataformTemplater(RawTemplater):
 
     def sequence_files(
         self, fnames: List[str], config=None, formatter=None
-    ) -> Iterator[str]:
+    ) -> List[str]:
         self.sqlfluff_config = config
         # NOTE: The sqlfluff_config will be introduced at this stage, so the default project_id and dataset_id will be set.
         self.project_id = self.sqlfluff_config.get_section(
@@ -64,6 +66,9 @@ class DataformTemplater(RawTemplater):
         config: Optional["FluffConfig"] = None,
         formatter: Optional["OutputStreamFormatter"] = None,
     ):
+        if in_str is None:
+          return TemplatedFile(source_str='', fname=fname), []
+
         templater_logger.info(in_str)
         if in_str and self.has_js_block(in_str):
             raise UsedJSBlockError("JavaScript block is not supported.")
@@ -100,16 +105,22 @@ class DataformTemplater(RawTemplater):
 
         return re.sub(pattern, ref_to_table, sql)
 
-    def slice_sqlx_template(self, sql: str) -> (str, List[RawFileSlice], List[TemplatedFileSlice]):
+    def replace_incremental_condition(self, sql: str):
+      pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
+      return re.sub(pattern, '', sql)
+
+    def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
         replaced_sql = self.replace_blocks(sql)
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
+        replaced_sql = self.replace_incremental_condition(replaced_sql)
 
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
-            (CONFIG_BLOCK_PATTERN, 'templated'),   # config block
-            # (JS_BLOCK_PATTERN, 'templated'),       # js block
-            (REF_PATTERN, 'templated')     # ref function
+            (CONFIG_BLOCK_PATTERN, 'templated'),
+            # (JS_BLOCK_PATTERN, 'templated'),
+            (REF_PATTERN, 'templated'),
+            (INCREMENTAL_CONDITION_PATTERN, 'templated'),
         ]
 
         raw_slices = []
@@ -120,7 +131,7 @@ class DataformTemplater(RawTemplater):
 
         while current_idx < len(sql):
             next_match = None
-            next_match_type = None
+            next_match_type = 'templated'
 
             for pattern, match_type in patterns:
                 match = re.search(pattern, sql[current_idx:])
