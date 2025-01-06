@@ -1,5 +1,5 @@
 config {
-    type: "table",
+    type: "incremental",
     schema: "schama",
     tags: [
         "test"
@@ -15,14 +15,28 @@ config {
 }
 
 WITH users AS (
-select user_id,
-    name,
+    SELECT
+        user_id,
+        name,
         age
-    from ${ref("users")}
+    FROM ${ref("users")}
+),
+
+user_orders AS (
+    SELECT
+        user_id,
+        order_id,
+        DATE(created_at) AS order_date
+    FROM ${ref('user_orders')}
 )
-, user_orders AS (
-    select user_id, order_id, DATE(created_at) AS order_date from ${ref('user_orders')}
-)
-SELECt users.user_id, name, age, order_date, count(order_id) AS order_count
-from users left outer join user_orders on users.user_id = user_orders.user_id
-group by user_id, name, age, order_date
+
+SELECT
+    users.user_id,
+    name,
+    age,
+    order_date,
+    COUNT(order_id) AS order_count
+FROM users LEFT OUTER JOIN user_orders ON users.user_id = user_orders.user_id
+WHERE TRUE
+${when(incremental(), `WHERE users.updated_at > (SELECT MAX(updated_at) FROM ${self()})`)}
+GROUP BY user_id, name, age, order_date
