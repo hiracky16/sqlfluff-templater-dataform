@@ -8,3 +8,14 @@ SQL linter for humans, to correctly parse and compile SQL projects using
 
 For more details on how to use this plugin,
 <!-- [see the documentation](). -->
+
+## SQLFluff configuration
+
+As dataform uses mainly '.sqlx' files you will need to set the '.sqlfluff' as below:
+
+```
+[sqlfluff]
+templater = dataform
+dialect = bigquery
+sql_file_exts = .sql,.sqlx
+```
