@@ -127,6 +127,8 @@ class DataformTemplater(RawTemplater):
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
             (CONFIG_BLOCK_PATTERN, 'templated'),
+            (PRE_OPERATION_BLOCK_PATTERN, 'templated'),
+            (POST_OPERATION_BLOCK_PATTERN, 'templated'),
             # (JS_BLOCK_PATTERN, 'templated'),
             (REF_PATTERN, 'templated'),
             (INCREMENTAL_CONDITION_PATTERN, 'templated'),

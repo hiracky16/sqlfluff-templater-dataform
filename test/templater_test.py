@@ -288,3 +288,60 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     assert templated_slices[3].slice_type == "literal"
     assert templated_slices[4].slice_type == "templated"
     assert templated_slices[5].slice_type == "literal"
+
+
+@mark.parametrize(
+    "test_input_filename, expected",
+    [
+        (
+            "process_sqlx_config_pre_post_ref.sqlx",
+            {
+                "expected_sql": "\n\n\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
+                "raw_slices": {
+                    "len": 8,
+                    "raw_starts": [
+                        "config",
+                        "\n",
+                        "pre_operations",
+                        "\n",
+                        "post_operations",
+                        "\nSELECT *",
+                        "${ref",
+                        " WHERE true",
+                    ]
+                },
+                "templated_slices": {
+                    "len": 8,
+                    "templated_types": [
+                        "templated",
+                        "literal",
+                        "templated",
+                        "literal",
+                        "templated",
+                        "literal",
+                        "templated",
+                        "literal",
+                    ]
+                }
+            }
+
+        )
+    ]
+)
+def test_process_sqlx_with_post_pre_operations_config_and_ref(templater, test_inputs_dir_path, test_input_filename, expected):
+
+    input_sqlx_path = test_inputs_dir_path / test_input_filename
+    input_sqlx = input_sqlx_path.read_text()
+
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+
+    assert replaced_sql ==  expected["expected_sql"]
+
+    assert len(raw_slices) == expected["raw_slices"]["len"]
+    for i, expected_raw_starts in enumerate(expected["raw_slices"]["raw_starts"]):
+        assert raw_slices[i].raw.startswith(expected_raw_starts)
+
+    assert len(templated_slices) == expected["templated_slices"]["len"]
+    for i, templated_types in enumerate(expected["templated_slices"]["templated_types"]):
+        assert templated_slices[i].slice_type == templated_types
+
