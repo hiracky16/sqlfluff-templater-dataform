@@ -6,5 +6,14 @@ This plugin works with [SQLFluff](https://pypi.org/project/sqlfluff/), the
 SQL linter for humans, to correctly parse and compile SQL projects using
 [Dataform](https://cloud.google.com/dataform).
 
-For more details on how to use this plugin,
-<!-- [see the documentation](). -->
+
+## SQLFluff configuration
+
+As dataform uses mainly '.sqlx' files you will need to set the '.sqlfluff' as below:
+
+```
+[sqlfluff]
+templater = dataform
+dialect = bigquery
+sql_file_exts = .sql,.sqlx
+```
