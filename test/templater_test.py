@@ -294,7 +294,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     "test_input_filename, expected",
     [
         (
-            "process_sqlx_config_pre_post_ref.sqlx",
+            "config_pre_post_ref.sqlx",
             {
                 "expected_sql": "\n\n\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
                 "raw_slices": {
