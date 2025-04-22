@@ -342,6 +342,6 @@ def test_process_sqlx_with_post_pre_operations_config_and_ref(templater, test_in
         assert raw_slices[i].raw.startswith(expected_raw_starts)
 
     assert len(templated_slices) == expected["templated_slices"]["len"]
-    for i, templated_types in enumerate(expected["templated_slices"]["templated_types"]):
-        assert templated_slices[i].slice_type == templated_types
+    for i, expected_templated_types in enumerate(expected["templated_slices"]["templated_types"]):
+        assert templated_slices[i].slice_type == expected_templated_types
 
