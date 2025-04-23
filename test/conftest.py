@@ -1,3 +1,4 @@
+from pathlib import Path
 import pytest
 
 from sqlfluff.core import FluffConfig
@@ -16,3 +17,7 @@ def templater(config):
     temp.project_id = 'my_project'
     temp.dataset_id = 'my_dataset'
     return temp
+
+@pytest.fixture
+def test_inputs_dir_path():
+    return Path(__file__).parent.resolve() / "test_inputs"

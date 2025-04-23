@@ -19,6 +19,8 @@ templater_logger = logging.getLogger("sqlfluff.templater")
 
 # regex pattern for config block and js block
 CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
+PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
+POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 REF_PATTERN = r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)}'
@@ -88,8 +90,15 @@ class DataformTemplater(RawTemplater):
         return bool(pattern.search(sql))
 
     def replace_blocks(self, in_str: str) -> str:
-        pattern = re.compile(CONFIG_BLOCK_PATTERN, re.DOTALL)
-        return re.sub(pattern, '', in_str)
+        for block_pattern in [
+            CONFIG_BLOCK_PATTERN,
+            PRE_OPERATION_BLOCK_PATTERN,
+            POST_OPERATION_BLOCK_PATTERN
+        ]:
+            pattern = re.compile(block_pattern, re.DOTALL)
+            in_str = re.sub(pattern, '', in_str)
+
+        return in_str
 
     def replace_ref_with_bq_table(self, sql):
         """ A regular expression to handle ref function calls that include spaces. """
@@ -118,6 +127,8 @@ class DataformTemplater(RawTemplater):
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
             (CONFIG_BLOCK_PATTERN, 'templated'),
+            (PRE_OPERATION_BLOCK_PATTERN, 'templated'),
+            (POST_OPERATION_BLOCK_PATTERN, 'templated'),
             # (JS_BLOCK_PATTERN, 'templated'),
             (REF_PATTERN, 'templated'),
             (INCREMENTAL_CONDITION_PATTERN, 'templated'),
