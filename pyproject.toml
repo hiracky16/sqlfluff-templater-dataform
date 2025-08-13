@@ -5,6 +5,7 @@ description = "Lint your dataform project SQL"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
   {name = "hiracky16"},
+  {name = "Clayton Roberts", email = "claytonjroberts@icloud.com"},
 ]
 license = {file = "LICENSE.md"}
 keywords = [
