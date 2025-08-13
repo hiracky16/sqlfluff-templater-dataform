@@ -62,25 +62,6 @@ PATTERN_INTERPOLATION = re.compile(
 )
 """Match JS variables. i.e. `${some_js_var + 1}`"""
 
-# PATTERN_INCREMENTAL_CONDITION = re.compile(
-#     r'\$\{when\(\s*[\w]+\(\),\s*(?P<SQL>(?:`[^`]*`)|(?:\"[^\"]*\")|(?:\'[^\']*\')|[^{}]*)\)}',
-#     flags=re.DOTALL,
-# )
-
-# PATTERN_INCREMENTAL_CONDITION = re.compile(
-#     r'''
-#     \$\{when\(\s*[\w]+\(\),\s*
-#     (?P<SQL>
-#         (?:`[^`]*`)
-#         |(?:\"[^\"]*\")
-#         |(?:\'[^\']*\')
-#         |[^{}]*
-#     )
-#     \)}
-#     ''',
-#     flags=re.DOTALL | re.VERBOSE,
-# )
-
 PATTERN_INCREMENTAL_CONDITION = re.compile(
     r"""
     \$\{when\(\s*[\w]+\(\),\s*

@@ -3,7 +3,7 @@
 from sqlfluff.core.plugin import hookimpl
 
 
-from .patterns import *  # ruff
+from .patterns import *
 from .templater import DataformTemplater
 
 

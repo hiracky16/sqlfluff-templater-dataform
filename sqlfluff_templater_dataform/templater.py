@@ -18,7 +18,6 @@ from sqlfluff.core.templaters.base import (
 )
 from sqlfluff.core import FluffConfig
 from sqlfluff.core.formatter import FormatterInterface
-from sqlfluff.core.errors import SQLFluffSkipFile
 
 from .patterns import (
     PATTERN_BLOCK_CONFIG,
@@ -32,13 +31,6 @@ from .patterns import (
 
 # Instantiate the templater logger
 _LOGGER = logging.getLogger("sqlfluff.templater")
-
-
-class UsedJSBlockError(SQLFluffSkipFile):
-    """This package does not support dataform js block"""
-
-    """ When js block used, skip linting a file."""
-    pass
 
 
 class DataformTemplater(RawTemplater):
@@ -91,10 +83,6 @@ class DataformTemplater(RawTemplater):
         if in_str is None:
             return TemplatedFile(source_str="", fname=fname), []
 
-        _LOGGER.info(in_str)
-        if in_str and self.has_js_block(in_str):
-            raise UsedJSBlockError("JavaScript block is not supported.")
-
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
         return TemplatedFile(
@@ -105,6 +93,7 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
+    @deprecated("Use `re.search(PATTERN_BLOCK_JS)` instead.")
     def has_js_block(self, sql: str) -> bool:
         return bool(PATTERN_BLOCK_JS.search(sql))
 
@@ -140,6 +129,7 @@ class DataformTemplater(RawTemplater):
 
         return in_str
 
+    @deprecated("Use `self.templatize_sql` instead.")
     @staticmethod
     def _recalculate_block_end(text: str, block_start: int, block_end: int) -> int:
         """Recalculate block end index for a slice."""
@@ -156,6 +146,7 @@ class DataformTemplater(RawTemplater):
 
         return num_chars
 
+    @deprecated("Use `self.templatize_sql` instead.")
     def extract_blocks(
         self, text, block_name: str
     ) -> Tuple[str, int, int] | Tuple[None, None, None]:
@@ -179,7 +170,7 @@ class DataformTemplater(RawTemplater):
             block_end_recalculated,
         )
 
-    def _ref_to_table(self, match: re.Match):
+    def _ref_to_table(self, match: re.Match) -> str:
         """Convert a ref pattern to a BigQuery table name."""
         if match.group(2):
             dataset = match.group(1)
@@ -189,13 +180,16 @@ class DataformTemplater(RawTemplater):
             model_name = match.group(1)
         return f"`{self.project_id}.{dataset}.{model_name}`"
 
+    @deprecated("Use `self.templatize_sql` instead.")
     def replace_ref_with_bq_table(self, sql: str) -> str:
         """Search SQL and replace ref patterns with BigQuery table names."""
         return re.sub(PATTERN_REFERENCE, self._ref_to_table, sql)
 
+    @deprecated("Use `self.templatize_sql` instead.")
     def replace_incremental_condition(self, sql: str) -> str:
         return re.sub(PATTERN_INCREMENTAL_CONDITION, "", sql)
 
+    @deprecated("Use `self.templatize_sql` instead.")
     def extract_templates(self, sql):
         expressions = []
         current_idx = 0
@@ -214,6 +208,7 @@ class DataformTemplater(RawTemplater):
 
         return sorted(expressions, key=len, reverse=True)
 
+    @deprecated("Use `self.templatize_sql` instead.")
     def replace_templates(self, sql):
         replaced_text = sql
         expressions = self.extract_templates(sql)
@@ -315,41 +310,6 @@ class DataformTemplater(RawTemplater):
 
         return rtn_templated_sql
 
-    def _generate_slices(
-        self,
-        sql_snippet: str,
-        pattern: re.Pattern,
-        match: re.Match,
-        raw_idx: int,
-        templated_idx: int,
-    ) -> Tuple[RawFileSlice, TemplatedFileSlice, str]:
-        """Generate slices to be used in Template File.
-
-        :returns:
-            the RawFileSlice,
-            the TemplatedFileSlice
-            templated sql
-        """
-        sql_templated = self._get_templated_sql(pattern=pattern, match=match)
-
-        return (
-            RawFileSlice(
-                raw=match.group(0),
-                slice_type="templated",
-                source_idx=raw_idx + match.start(),
-                # block_idx=block_idx,
-            ),
-            TemplatedFileSlice(
-                slice_type="templated",
-                source_slice=slice(raw_idx + match.start(), raw_idx + match.end()),
-                templated_slice=slice(
-                    templated_idx,
-                    templated_idx + len(sql_templated),
-                ),
-            ),
-            sql_templated,
-        )
-
     def _find_next_match(
         self, sql_snippet: str
     ) -> Tuple[re.Match, re.Pattern] | Tuple[None, None]:
@@ -385,31 +345,10 @@ class DataformTemplater(RawTemplater):
         # Iterate through the raw, find the next match (nearest to index) to change (a block, ref, etc)
         # When matched, replace with correct template
         # Move index of raw to current += length of match
-        # Move index of template to current += len of replacment sub
+        # Move index of template to current += len of replacement sub
 
         raw_slices: list[RawFileSlice] = []
         templated_slices: list[TemplatedFileSlice] = []
-
-        # sql_templated = self.templatize_sql(sql)
-
-        # # Replace pre_operations and post_operations blocks with newlines
-        # for pattern in [
-        #     PATTERN_BLOCK_PRE_OPERATION,
-        #     PATTERN_BLOCK_POST_OPERATION,
-        # ]:
-        #     _LOGGER.debug(f"Replacing block pattern with newline: {pattern.__doc__!r}")
-        #     sql_templated = re.sub(pattern, "\n", sql_templated)
-
-        # # _LOGGER.debug(r"Replacing `${}` patterns")
-        # sql_templated = self.replace_templates(sql_templated)
-
-        # Block name corresponding to the structure of SQLX
-
-        # patterns_have_internal_sql = {
-        #     PATTERN_BLOCK_PRE_OPERATION,
-        #     PATTERN_BLOCK_POST_OPERATION,
-        #     PATTERN_INCREMENTAL_CONDITION,
-        # }
 
         raw_idx = 0  # Current parsing/cursor index
         templated_idx = 0  # Current templated index
@@ -476,19 +415,34 @@ class DataformTemplater(RawTemplater):
 
             assert next_pattern is not None
 
-            _slice_raw, _slice_templated, _replaced_sql_snippet = self._generate_slices(
-                sql_snippet=sql[raw_idx:],
-                pattern=next_pattern,
-                match=next_match,
-                raw_idx=raw_idx,
-                templated_idx=templated_idx,
+            _sql_templated_snippet = self._get_templated_sql(
+                pattern=next_pattern, match=next_match
             )
 
-            raw_slices.append(_slice_raw)
-            templated_slices.append(_slice_templated)
-            templated_idx += len(_replaced_sql_snippet)
+            raw_slices.append(
+                RawFileSlice(
+                    raw=next_match.group(0),
+                    slice_type="templated",
+                    source_idx=raw_idx + next_match.start(),
+                    # block_idx=block_idx,
+                )
+            )
+            templated_slices.append(
+                TemplatedFileSlice(
+                    slice_type="templated",
+                    source_slice=slice(
+                        raw_idx + next_match.start(), raw_idx + next_match.end()
+                    ),
+                    templated_slice=slice(
+                        templated_idx,
+                        templated_idx + len(sql_templated),
+                    ),
+                ),
+            )
+
+            templated_idx += len(_sql_templated_snippet)
             raw_idx = raw_idx + next_match.end()
-            sql_templated += _replaced_sql_snippet
+            sql_templated += _sql_templated_snippet
 
             block_idx += 1
 
@@ -497,5 +451,4 @@ class DataformTemplater(RawTemplater):
 
 __all__ = [
     "DataformTemplater",
-    "UsedJSBlockError",
 ]
