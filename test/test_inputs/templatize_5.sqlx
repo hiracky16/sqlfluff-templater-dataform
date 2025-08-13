@@ -1,0 +1,30 @@
+
+config {
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value" : "value"
+    }
+}
+pre_operations {
+    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
+        RETURNS FLOAT64
+        AS ((x + 4) / y);
+}
+post_operations {
+    GRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE ${self()}
+    TO "group:allusers@example.com", "user:otheruser@example.com"
+}
+
+-->
+
+    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
+    RETURNS FLOAT64
+    AS ((x + 4) / y);
+
+    GRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE 'self()'
+    TO "group:allusers@example.com", "user:otheruser@example.com";

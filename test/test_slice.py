@@ -8,6 +8,7 @@ from .helpers import (
     SliceExpected,
     assert_slices,
 )
+from .constants import TEST_INPUT_FILE_SEPARATOR
 
 
 def test_slice_sqlx_template_with_config_and_ref(templater):
@@ -103,14 +104,19 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 def test_slice_sqlx_template_with_full_expression_query(
     templater, test_inputs_dir_path: Path
 ):
-    input_sqlx = (test_inputs_dir_path / "query_1__raw.sqlx").read_text()
-    expected_sql = (test_inputs_dir_path / "query_1__expected.sqlx").read_text()
+    input_sqlx, expected_sql = (
+        (test_inputs_dir_path / "templatize_slice_2.sqlx")
+        .read_text()
+        .split(TEST_INPUT_FILE_SEPARATOR)
+    )
 
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
     )
 
-    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
+    assert_sql_is_equal(
+        expected_sql=expected_sql, actual_sql=replaced_sql, ignore_whitespace=True
+    )
 
     assert_slices(
         slices_raw_actual=raw_slices,

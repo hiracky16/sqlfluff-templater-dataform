@@ -4,8 +4,7 @@ import re
 
 from sqlfluff_templater_dataform import (
     PATTERN_BLOCK_CONFIG,
-    PATTERN_BLOCK_PRE_OPERATION,
-    PATTERN_BLOCK_POST_OPERATION,
+    PATTERN_BLOCK_OPERATION,
     PATTERN_BLOCK_JS,
     PATTERN_REFERENCE,
     PATTERN_INCREMENTAL_CONDITION,
@@ -19,18 +18,18 @@ from sqlfluff_templater_dataform import (
         (PATTERN_BLOCK_CONFIG, "config { key = 'value' }", None),
         (PATTERN_BLOCK_CONFIG, "config{\n  nested { key = 'value' }\n}", None),
         (
-            PATTERN_BLOCK_PRE_OPERATION,
+            PATTERN_BLOCK_OPERATION,
             "pre_operations { op1(); op2(); }",
             " op1(); op2(); ",
         ),
         (
-            PATTERN_BLOCK_PRE_OPERATION,
+            PATTERN_BLOCK_OPERATION,
             "pre_operations{\n  nested { foo } \n}",
             "\n  nested { foo } \n",
         ),
-        (PATTERN_BLOCK_POST_OPERATION, "post_operations { op1(); }", " op1(); "),
+        (PATTERN_BLOCK_OPERATION, "post_operations { op1(); }", " op1(); "),
         (
-            PATTERN_BLOCK_POST_OPERATION,
+            PATTERN_BLOCK_OPERATION,
             "post_operations{\n nested { bar } }",
             "\n nested { bar } ",
         ),

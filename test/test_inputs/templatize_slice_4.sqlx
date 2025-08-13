@@ -1,0 +1,12 @@
+config {
+    type: "table",
+    columns: {
+        "test" : "test",
+        "value" : "value"
+    }
+}
+SELECT * FROM ${ref('test')} WHERE true
+
+-->
+
+SELECT * FROM `my_project.my_dataset.test` WHERE true

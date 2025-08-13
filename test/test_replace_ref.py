@@ -1,38 +1,30 @@
 """Tests for replacing a JS BigQuery refrence with the actual BigQuery fully qualified name."""
 
+from .helpers import assert_sql_is_equal
 
-def test_replace_ref_with_bq_table_single_ref(templater):
-    input_sql = "SELECT * FROM ${ref('test')}"
-    expected_sql = "SELECT * FROM `my_project.my_dataset.test`"
+import pytest
+
+
+@pytest.mark.parametrize(
+    "input_sql, expected_sql",
+    [
+        ("SELECT * FROM ${ref('test')}", "SELECT * FROM `my_project.my_dataset.test`"),
+        ('SELECT * FROM ${ref("test")}', "SELECT * FROM `my_project.my_dataset.test`"),
+        (
+            "SELECT * FROM ${ref('other_dataset', 'test')}",
+            "SELECT * FROM `my_project.other_dataset.test`",
+        ),
+        (
+            'SELECT * FROM ${ref("other_dataset", "test")}',
+            "SELECT * FROM `my_project.other_dataset.test`",
+        ),
+        (
+            "SELECT * FROM ${ref('test')}, ${ref('another')}",
+            "SELECT * FROM `my_project.my_dataset.test`, `my_project.my_dataset.another`",
+        ),
+    ],
+)
+def test_template_ref_with_bq_table(templater, input_sql, expected_sql):
     result = templater.replace_ref_with_bq_table(input_sql)
-    assert result == expected_sql
 
-
-def test_replace_ref_with_bq_table_single_ref_double_quotes(templater):
-    input_sql = 'SELECT * FROM ${ref("test")}'
-    expected_sql = "SELECT * FROM `my_project.my_dataset.test`"
-    result = templater.replace_ref_with_bq_table(input_sql)
-    assert result == expected_sql
-
-
-def test_replace_ref_with_bq_table_with_dataset(templater):
-    input_sql = "SELECT * FROM ${ref('other_dataset', 'test')}"
-    expected_sql = "SELECT * FROM `my_project.other_dataset.test`"
-    result = templater.replace_ref_with_bq_table(input_sql)
-    assert result == expected_sql
-
-
-def test_replace_ref_with_bq_table_with_dataset_double_quotes(templater):
-    input_sql = 'SELECT * FROM ${ref("other_dataset", "test")}'
-    expected_sql = "SELECT * FROM `my_project.other_dataset.test`"
-    result = templater.replace_ref_with_bq_table(input_sql)
-    assert result == expected_sql
-
-
-def test_replace_ref_with_bq_table_multiple_refs(templater):
-    input_sql = "SELECT * FROM ${ref('test')}, ${ref('another')}"
-    expected_sql = (
-        "SELECT * FROM `my_project.my_dataset.test`, `my_project.my_dataset.another`"
-    )
-    result = templater.replace_ref_with_bq_table(input_sql)
-    assert result == expected_sql
+    assert_sql_is_equal(expected_sql, result)

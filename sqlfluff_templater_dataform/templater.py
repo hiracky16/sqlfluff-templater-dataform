@@ -3,9 +3,8 @@ import os
 import re
 import string
 import random
-import copy
 from typing import List, Optional, Tuple, overload
-from typing_extensions import override
+from typing_extensions import override, deprecated
 import operator
 
 
@@ -21,10 +20,9 @@ from sqlfluff.core import FluffConfig
 from sqlfluff.core.formatter import FormatterInterface
 from sqlfluff.core.errors import SQLFluffSkipFile
 
-from .constants import (
+from .patterns import (
     PATTERN_BLOCK_CONFIG,
-    PATTERN_BLOCK_PRE_OPERATION,
-    PATTERN_BLOCK_POST_OPERATION,
+    PATTERN_BLOCK_OPERATION,
     PATTERN_BLOCK_JS,
     PATTERN_REFERENCE,
     PATTERN_INCREMENTAL_CONDITION,
@@ -110,6 +108,7 @@ class DataformTemplater(RawTemplater):
     def has_js_block(self, sql: str) -> bool:
         return bool(PATTERN_BLOCK_JS.search(sql))
 
+    @deprecated("Use `templatize_sql` instead to replace block patterns.")
     def replace_blocks(self, in_str: str, *list_pattern_name: str) -> str:
         """Replace block patterns with empty strings.
 
@@ -240,13 +239,7 @@ class DataformTemplater(RawTemplater):
             blocks with the content of their inner blocks
         - Replace `${ref(<table_name>)}` with the fully qualified table name
         """
-        match, pattern = self._find_next_match(sql)
-
-        if not match or not pattern:
-            return sql
-
-        return self._get_templated_sql(match=match, pattern=pattern)
-
+        return self.slice_sqlx_template(sql)[0]
 
     @overload
     def _get_templated_sql(self, pattern: None, match: None) -> str: ...
@@ -265,22 +258,30 @@ class DataformTemplater(RawTemplater):
 
         if pattern and match:
             if pattern in [
-                PATTERN_BLOCK_POST_OPERATION,
-                PATTERN_BLOCK_PRE_OPERATION,
+                PATTERN_BLOCK_OPERATION,
                 PATTERN_INCREMENTAL_CONDITION,
             ]:
                 rtn_templated_sql = match.group("SQL")
+
+                if pattern == PATTERN_BLOCK_OPERATION and not re.sub(
+                    r"\s+", "", rtn_templated_sql
+                ).endswith(";"):
+                    rtn_templated_sql = rtn_templated_sql.rstrip() + ";"
 
             elif pattern == PATTERN_REFERENCE:
                 rtn_templated_sql = self._ref_to_table(match=match)
 
             elif pattern == PATTERN_INTERPOLATION:
-                rtn_templated_sql = f"'{match.group('variable')}'"
+                rtn_templated_sql = (
+                    "'" + match.group("variable").strip().replace("'", "\\'") + "'"
+                )
+                # ^ replace with a single-quoted string, escaping single quotes within the variable
 
             elif pattern in [
                 PATTERN_BLOCK_JS,
                 PATTERN_BLOCK_CONFIG,
             ]:
+                # For patterns that are just config or JS, just replace with a newline
                 rtn_templated_sql = "\n"
 
             else:
@@ -290,20 +291,27 @@ class DataformTemplater(RawTemplater):
                     " or provide a `SQL` group in the pattern."
                 )
 
-        internal_match, internal_pattern = self._find_next_match(rtn_templated_sql)
+        while True:
+            internal_match: re.Match | None = None
+            internal_pattern: re.Pattern | None = None
 
-        if internal_match and internal_pattern:
-            _LOGGER.debug(
-                f"Found internal match {internal_match.group(0)!r} with pattern {internal_pattern.__doc__!r}"
-            )
-            return (
-                rtn_templated_sql[: internal_match.start()]
-                + self._get_templated_sql(
-                    pattern=internal_pattern,
-                    match=internal_match,
+            internal_match, internal_pattern = self._find_next_match(rtn_templated_sql)
+
+            if internal_match and internal_pattern:
+                _LOGGER.debug(
+                    f"Found internal match {internal_match.group(0)!r} with pattern {internal_pattern.__doc__!r}"
                 )
-                + rtn_templated_sql[internal_match.end() :]
-            )
+                rtn_templated_sql = (
+                    rtn_templated_sql[: internal_match.start()]
+                    + self._get_templated_sql(
+                        pattern=internal_pattern,
+                        match=internal_match,
+                    )
+                    + rtn_templated_sql[internal_match.end() :]
+                )
+
+            if not internal_match or not internal_pattern:
+                break
 
         return rtn_templated_sql
 

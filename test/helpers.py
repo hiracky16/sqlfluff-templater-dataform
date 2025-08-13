@@ -16,14 +16,27 @@ ALIAS_TEMPLATE_TYPE: TypeAlias = Literal["templated", "literal"]
 def assert_sql_is_equal(
     expected_sql: str | re.Pattern,
     actual_sql: str,
+    ignore_whitespace: bool = False,
 ):
     """Assert that the expected SQL is equal to the raw SQL.
+
+    :param expected_sql: The expected SQL statement (can be a regex pattern)
+    :param actual_sql: The actual SQL statement to compare against
+    :param ignore_whitespace: Whether to ignore whitespace differences.
+        This is ignored if `expected_sql` is a regex pattern.
 
     :raises AssertionError: If the SQL statements do not match
     """
 
     if isinstance(expected_sql, re.Pattern):
-        assert re.match(expected_sql, actual_sql), "Expected to match Regex pattern"
+        assert re.match(expected_sql, actual_sql), (
+            f"Expected {actual_sql} to match Regex pattern: {expected_sql}"
+        )
+        return
+
+    if ignore_whitespace:
+        expected_sql = re.sub(r"\s+", " ", expected_sql).strip()
+        actual_sql = re.sub(r"\s+", " ", actual_sql).strip()
 
     assert expected_sql == actual_sql, (
         f"EXPECTED:\n{expected_sql!r}\nACTUAL:\n{actual_sql!r}"
@@ -32,6 +45,8 @@ def assert_sql_is_equal(
 
 @dataclass
 class SliceExpected:
+    """Container to hold testing expectations for SQL slices."""
+
     sql_expected: str
     """Raw SQL that should be expected from the slice"""
 

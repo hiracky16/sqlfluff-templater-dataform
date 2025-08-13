@@ -1,4 +1,4 @@
-"""Constants for the Dataform templater plugin."""
+"""Matching regex patterns for the Dataform templater plugin."""
 
 import re
 
@@ -8,20 +8,27 @@ PATTERN_BLOCK_CONFIG = re.compile(
 )
 """Match config blocks. i.e. `config { ... }`"""
 
-PATTERN_BLOCK_PRE_OPERATION = re.compile(
-    r"pre_operations\s*\{(?P<SQL>([^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}",
-    flags=re.DOTALL,
+PATTERN_BLOCK_OPERATION = re.compile(
+    r"""
+    (?:pre_operations|post_operations)\s*
+    (?<!\\)\{           # Match `{` and don't allow an escape
+    (?P<SQL>
+        # (?:[^\\}]|\\})+?
+        (?:
+            [^{}]|
+            \{
+                (?:
+                    [^{}]|
+                    \{[^{}]*\}
+                )*
+            \}
+        )*
+    )
+    (?<!\\)\}           # Match `}` and don't allow an escape
+    """,
+    flags=re.DOTALL | re.VERBOSE,
 )
-"""Match pre_operations blocks. i.e. `pre_operations { ... }`
-
-Note: the first group inside will be the content of the block
-"""
-
-PATTERN_BLOCK_POST_OPERATION = re.compile(
-    r"post_operations\s*\{(?P<SQL>([^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}",
-    flags=re.DOTALL,
-)
-"""Match post_operations blocks. i.e. `post_operations { ... }`
+"""Match pre_operations blocks. i.e. `pre_operations { ... }` or `post_operations { ... }`
 
 Note: the first group inside will be the content of the block
 """
@@ -46,7 +53,9 @@ PATTERN_INTERPOLATION = re.compile(
     (?<!\\)\$           # Match `$` and don't allow an escape
     (?<!\\)\{           # Match `{` and don't allow an escape
     (?!ref)             # Don't match ref()
-    (?P<variable>.+)    # Get the variable content (for hashing)
+    \s*(?P<variable>(?:[^\\}]|\\})+)\s*
+        # Get the variable content (for hashing)
+        # This matches anything but `}`, and does allow a `\}` for escaping
     (?<!\\)\}           # Match `}` and don't allow an escape
     """,
     flags=re.DOTALL | re.VERBOSE,
@@ -87,8 +96,7 @@ PATTERN_INCREMENTAL_CONDITION = re.compile(
 
 DICT_PATTERN = {
     "config": PATTERN_BLOCK_CONFIG,
-    "pre_operations": PATTERN_BLOCK_PRE_OPERATION,
-    "post_operations": PATTERN_BLOCK_POST_OPERATION,
+    "operations": PATTERN_BLOCK_OPERATION,
     "js": PATTERN_BLOCK_JS,
     "ref": PATTERN_REFERENCE,
     "incremental_condition": PATTERN_INCREMENTAL_CONDITION,
@@ -97,8 +105,7 @@ DICT_PATTERN = {
 
 __all__ = [
     "PATTERN_BLOCK_CONFIG",
-    "PATTERN_BLOCK_PRE_OPERATION",
-    "PATTERN_BLOCK_POST_OPERATION",
+    "PATTERN_BLOCK_OPERATION",
     "PATTERN_BLOCK_JS",
     "PATTERN_REFERENCE",
     "PATTERN_INCREMENTAL_CONDITION",

@@ -12,6 +12,8 @@ import pytest
 from sqlfluff_templater_dataform import DataformTemplater
 from sqlfluff.core import FluffConfig
 
+from .constants import TEST_DATASET_ID, TEST_PROJECT_ID, PATH_TEST_INPUTS
+
 
 @pytest.fixture
 def config():
@@ -27,11 +29,11 @@ def templater(config: FluffConfig):
     )
 
     # NOTE: The patch will be applied as it is not being updated.
-    _templater_instance.project_id = "my_project"
-    _templater_instance.dataset_id = "my_dataset"
+    _templater_instance.project_id = TEST_PROJECT_ID
+    _templater_instance.dataset_id = TEST_DATASET_ID
     return _templater_instance
 
 
 @pytest.fixture
 def test_inputs_dir_path() -> Path:
-    return Path(__file__).parent.resolve() / "test_inputs"
+    return PATH_TEST_INPUTS
