@@ -26,12 +26,15 @@ sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
 [tool.setuptools.packages.find]
 include = ["sqlfluff_templater_dataform"]
 
+[tool.ruff]
+lint.ignore = ["F403"]
 
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "pytest-sugar>=1.0.0",
+    "ruff>=0.12.8",
     "sqlfluff>=3.4.2",
 ]
 

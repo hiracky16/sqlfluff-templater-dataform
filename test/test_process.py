@@ -20,9 +20,7 @@ SELECT * FROM ${ref('test')} WHERE true
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
     )
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql
-    )
+    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
 
     assert len(raw_slices) == 4
     assert raw_slices[0].raw.startswith("config")
@@ -53,9 +51,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
         input_sqlx
     )
 
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql
-    )
+    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
 
     assert len(raw_slices) == 6
     assert raw_slices[0].raw.startswith("config")
@@ -106,7 +102,11 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     ],
 )
 def test_process_sqlx_with_post_pre_operations_config_and_ref(
-    templater, test_inputs_dir_path: Path, test_input_filename: str, test_output_filename: str, expected
+    templater,
+    test_inputs_dir_path: Path,
+    test_input_filename: str,
+    test_output_filename: str,
+    expected,
 ):
     input_sqlx = (test_inputs_dir_path / test_input_filename).read_text()
     expected_sql = (test_inputs_dir_path / test_output_filename).read_text()
@@ -115,9 +115,7 @@ def test_process_sqlx_with_post_pre_operations_config_and_ref(
         input_sqlx
     )
 
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql
-    )
+    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
 
     for (
         template_type_expected,

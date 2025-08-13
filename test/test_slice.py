@@ -1,19 +1,7 @@
 """Slicing tests."""
 
-import re
-from pprint import pformat
 from pathlib import Path
-from typing import Callable, List, Tuple, Literal, TypeAlias, Collection, Annotated
-from operator import eq as op_equal
-from dataclasses import dataclass, field
 
-from sqlfluff.core.templaters.base import (
-    RawTemplater,
-    TemplatedFile,
-    large_file_check,
-    RawFileSlice,
-    TemplatedFileSlice,
-)
 
 from .helpers import (
     assert_sql_is_equal,
