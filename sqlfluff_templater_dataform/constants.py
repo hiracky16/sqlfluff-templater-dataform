@@ -30,10 +30,28 @@ PATTERN_BLOCK_JS = re.compile(r"js\s*\{(?:[^{}]|\{[^{}]*\})*\}", flags=re.DOTALL
 """Match js blocks. i.e. `js { ... }`"""
 
 PATTERN_REFERENCE = re.compile(
-    r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}',
-    flags=re.DOTALL,
+    r'''\$\{\s*
+        ref\(\s*                # Match ref()
+        [\'"]([^\'"]+)[\'"]
+        (?:\s*,\s*[\'"]
+            ([^\'"]+)
+            [\'"])?
+        \s*\)\s*\}''',
+    flags=re.DOTALL | re.VERBOSE,
 )
 """Match ref patterns. i.e. `${ref('dataset', 'model')}`"""
+
+PATTERN_INTERPOLATION = re.compile(
+    r'''
+    (?<!\\)\$           # Match `$` and don't allow an escape
+    (?<!\\)\{           # Match `{` and don't allow an escape
+    (?!ref)             # Don't match ref()
+    (?P<variable>.+)    # Get the variable content (for hashing)
+    (?<!\\)\}           # Match `}` and don't allow an escape
+    ''',
+    flags=re.DOTALL | re.VERBOSE
+)
+"""Match JS variables. i.e. `${some_js_var + 1}`"""
 
 # PATTERN_INCREMENTAL_CONDITION = re.compile(
 #     r'\$\{when\(\s*[\w]+\(\),\s*(?P<SQL>(?:`[^`]*`)|(?:\"[^\"]*\")|(?:\'[^\']*\')|[^{}]*)\)}',
@@ -74,6 +92,7 @@ DICT_PATTERN = {
     "js": PATTERN_BLOCK_JS,
     "ref": PATTERN_REFERENCE,
     "incremental_condition": PATTERN_INCREMENTAL_CONDITION,
+    "interpolation": PATTERN_INTERPOLATION
 }
 
 __all__ = [
@@ -83,5 +102,6 @@ __all__ = [
     "PATTERN_BLOCK_JS",
     "PATTERN_REFERENCE",
     "PATTERN_INCREMENTAL_CONDITION",
+    "PATTERN_INTERPOLATION",
     "DICT_PATTERN",
 ]

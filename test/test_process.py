@@ -75,12 +75,12 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 
 
 @mark.parametrize(
-    "test_input_filename, expected",
+    "test_input_filename, test_output_filename, expected",
     [
         (
-            "config_pre_post_ref.sqlx",
+            "config_pre_post_ref__raw.sqlx",
+            "config_pre_post_ref__expected.sqlx",
             {
-                "expected_sql": "\n\n\n\n\n\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
                 "raw_slices_starts": [
                     "config",
                     "\n",
@@ -106,16 +106,14 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     ],
 )
 def test_process_sqlx_with_post_pre_operations_config_and_ref(
-    templater, test_inputs_dir_path: Path, test_input_filename, expected
+    templater, test_inputs_dir_path: Path, test_input_filename: str, test_output_filename: str, expected
 ):
-    input_sqlx_path = test_inputs_dir_path / test_input_filename
-    input_sqlx = input_sqlx_path.read_text()
+    input_sqlx = (test_inputs_dir_path / test_input_filename).read_text()
+    expected_sql = (test_inputs_dir_path / test_output_filename).read_text()
 
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
     )
-
-    expected_sql = expected["expected_sql"]
 
     assert_sql_is_equal(
         expected_sql=expected_sql, actual_sql=replaced_sql

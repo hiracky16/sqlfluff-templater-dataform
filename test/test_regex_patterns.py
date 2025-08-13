@@ -9,6 +9,7 @@ from sqlfluff_templater_dataform import (
     PATTERN_BLOCK_JS,
     PATTERN_REFERENCE,
     PATTERN_INCREMENTAL_CONDITION,
+    PATTERN_INTERPOLATION,
 )
 
 
@@ -49,9 +50,13 @@ from sqlfluff_templater_dataform import (
         ),
         (
             PATTERN_INCREMENTAL_CONDITION,
-            "${when(is_incremental(), \"col > last_run\")}",
+            '${when(is_incremental(), "col > last_run")}',
             {"SQL", "col > last_run"},
         ),
+        (PATTERN_INTERPOLATION, r'${ref("something")}', False),
+        (PATTERN_INTERPOLATION, r"${some_variable}", {"variable": "some_variable"}),
+        (PATTERN_INTERPOLATION, r"\${some_var}", False),
+        (PATTERN_INTERPOLATION, r"${some_js_var + 1}", {"variable": "some_js_var + 1"}),
     ],
 )
 def test_regex_pattern(
@@ -72,11 +77,11 @@ def test_regex_pattern(
     """
     match = pattern.search(text)
 
-    if expected is not False:
-        assert match is not None
-    else:
+    if expected is False:
         assert match is None
         return
+
+    assert match is not None
 
     if isinstance(expected, str):
         # Convenience method to make back into a tuple
@@ -91,6 +96,6 @@ def test_regex_pattern(
             i += 1
 
     if isinstance(expected, dict):
-        for _group_name, _expected_item in expected:
+        for _group_name, _expected_item in expected.items():
             assert match.group(_group_name) is not None
             assert _expected_item == match.group(_group_name)

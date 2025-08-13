@@ -27,6 +27,7 @@ from .constants import (
     PATTERN_BLOCK_JS,
     PATTERN_REFERENCE,
     PATTERN_INCREMENTAL_CONDITION,
+    PATTERN_INTERPOLATION,
     DICT_PATTERN,
 )
 
@@ -270,6 +271,9 @@ class DataformTemplater(RawTemplater):
         if pattern == PATTERN_REFERENCE:
             return self._ref_to_table(match=match)
 
+        if pattern == PATTERN_INTERPOLATION:
+            return f"'{match.group('variable')}'"
+
         if pattern in [
             PATTERN_BLOCK_JS,
             PATTERN_BLOCK_CONFIG,
@@ -349,14 +353,6 @@ class DataformTemplater(RawTemplater):
         # sql_templated = self.replace_templates(sql_templated)
 
         # Block name corresponding to the structure of SQLX
-        patterns = [
-            PATTERN_BLOCK_POST_OPERATION,
-            PATTERN_INCREMENTAL_CONDITION,
-            PATTERN_BLOCK_PRE_OPERATION,
-            PATTERN_BLOCK_JS,
-            PATTERN_REFERENCE,
-            PATTERN_BLOCK_CONFIG,
-        ]
 
         # patterns_have_internal_sql = {
         #     PATTERN_BLOCK_PRE_OPERATION,
@@ -375,7 +371,7 @@ class DataformTemplater(RawTemplater):
             next_pattern: re.Pattern | None = None
 
             # Find the first match for each pattern
-            for pattern in patterns:
+            for _pattern_name, pattern in DICT_PATTERN.items():
                 # Find the next immediate match
                 match = re.search(pattern, sql[raw_idx:])
                 if match and (not next_match or next_match.start() > match.start()):

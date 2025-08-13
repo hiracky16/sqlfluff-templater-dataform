@@ -14,6 +14,6 @@ post_operations {
     GRANT `roles/bigquery.dataViewer`
     ON
     TABLE ${self()}
-    TO "group:allusers@example.com", "user:otheruser@example.com"
+    TO "group:allusers@example.com", "user:otheruser@example.com";
 }
 SELECT * FROM ${ref('test')} WHERE true

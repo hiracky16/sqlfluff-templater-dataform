@@ -1,0 +1,17 @@
+
+
+
+
+
+    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
+      RETURNS FLOAT64
+      AS ((x + 4) / y);
+
+
+  GRANT `roles/bigquery.dataViewer`
+      ON
+      TABLE ${self()}
+      TO "group:allusers@example.com", "user:otheruser@example.com";
+
+
+SELECT * FROM `my_project.my_dataset.test` JOIN `my_project.other_dataset.other_table` ON test.id = other_table.id AND test.name = 'hoge'

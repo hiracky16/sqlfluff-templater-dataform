@@ -1,8 +1,11 @@
 """Slicing tests."""
 
 import re
-from typing import Callable, List, Tuple, Literal, TypeAlias, Collection
+from pprint import pformat
+from pathlib import Path
+from typing import Callable, List, Tuple, Literal, TypeAlias, Collection, Annotated
 from operator import eq as op_equal
+from dataclasses import dataclass, field
 
 from sqlfluff.core.templaters.base import (
     RawTemplater,
@@ -12,57 +15,11 @@ from sqlfluff.core.templaters.base import (
     TemplatedFileSlice,
 )
 
-from .helpers import assert_sql_is_equal
-
-ALIAS_TEMPLATE_TYPE: TypeAlias = Literal["templated", "literal"]
-ALIAS_SLICE_EXPECTED_SQL_SNIPPET_AND_FUNC: TypeAlias = (
-    Tuple[Callable[..., bool], str] | str
+from .helpers import (
+    assert_sql_is_equal,
+    SliceExpected,
+    assert_slices,
 )
-
-
-def assert_slices(
-    slices_raw_actual: Collection[RawFileSlice],
-    slices_template_actual: Collection[TemplatedFileSlice],
-    slices_template_type: Collection[ALIAS_TEMPLATE_TYPE],
-    slices_expected_sql_snippet_and_func: Collection[
-        ALIAS_SLICE_EXPECTED_SQL_SNIPPET_AND_FUNC
-    ],
-):
-    assert (
-        len(slices_raw_actual)
-        == len(slices_template_actual)
-        == len(slices_template_type)
-        == len(slices_expected_sql_snippet_and_func)
-    ), "The length of the slices are not the same."
-
-    for (
-        slice_raw_actual,
-        slice_template_actual,
-        slice_template_type,
-        _slice_expected,
-    ) in zip(
-        slices_raw_actual,
-        slices_template_actual,
-        slices_template_type,
-        *zip(slices_expected_sql_snippet_and_func),
-    ):
-        slice_raw_actual: RawFileSlice
-        slice_template_actual: TemplatedFileSlice
-        slice_template_type: ALIAS_TEMPLATE_TYPE
-        _slice_expected: ALIAS_SLICE_EXPECTED_SQL_SNIPPET_AND_FUNC
-
-        slice_expected_sql_func, slice_expected_sql_snippet = (
-            _slice_expected
-            if isinstance(_slice_expected, tuple)
-            else (op_equal, _slice_expected)
-        )
-        # ^ Assume that if the item is not a tuple, that its a bare string and it should be equal
-
-        assert slice_expected_sql_func(slice_raw_actual.raw, slice_expected_sql_snippet)
-        assert slice_template_actual.slice_type == slice_template_type
-        # assert slice_raw_actual.slice_type == slice_template_type, (
-        #     "Template type is not the same"
-        # )
 
 
 def test_slice_sqlx_template_with_config_and_ref(templater):
@@ -71,7 +28,9 @@ def test_slice_sqlx_template_with_config_and_ref(templater):
 }
 SELECT 1 AS value FROM ${ref('test')} WHERE true
 """
-    expected_sql = "\nSELECT 1 AS value FROM `my_project.my_dataset.test` WHERE true\n"
+    expected_sql = (
+        "\n\nSELECT 1 AS value FROM `my_project.my_dataset.test` WHERE true\n"
+    )
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
     )
@@ -80,12 +39,19 @@ SELECT 1 AS value FROM ${ref('test')} WHERE true
     assert_slices(
         slices_raw_actual=raw_slices,
         slices_template_actual=templated_slices,
-        slices_template_type=["templated", "literal", "templated", "literal"],
-        slices_expected_sql_snippet_and_func=[
-            (str.startswith, "config"),
-            (str.startswith, "\nSELECT 1"),
-            (str.startswith, "${ref"),
-            (op_equal, " WHERE true\n"),
+        slices_expected=[
+            SliceExpected(
+                "config", sql_slice_type="templated", sql_comparison_func=str.startswith
+            ),
+            SliceExpected(
+                "\nSELECT 1",
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+            ),
+            SliceExpected(
+                "${ref", sql_slice_type="templated", sql_comparison_func=str.startswith
+            ),
+            SliceExpected(" WHERE true\n", sql_slice_type="literal"),
         ],
     )
 
@@ -100,7 +66,7 @@ def test_slice_sqlx_template_with_multiple_refs(templater):
 }
 SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
 """
-    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
+    expected_sql = "\n\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
 
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
@@ -111,53 +77,46 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
     assert_slices(
         slices_raw_actual=raw_slices,
         slices_template_actual=templated_slices,
-        slices_template_type=[
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-        ],
-        slices_expected_sql_snippet_and_func=[
-            (str.startswith, "config"),
-            (str.startswith, "\nSELECT *"),
-            (str.startswith, "${ref"),
-            (str.startswith, " JOIN"),
-            (str.startswith, "${ref"),
-            (str.endswith, " ON test.id = other_table.id\n"),
+        slices_expected=[
+            SliceExpected(
+                sql_comparison_func=str.startswith,
+                sql_expected="config",
+                sql_slice_type="templated",
+            ),
+            SliceExpected(
+                sql_comparison_func=str.startswith,
+                sql_expected="\nSELECT *",
+                sql_slice_type="literal",
+            ),
+            SliceExpected(
+                sql_comparison_func=str.startswith,
+                sql_expected="${ref",
+                sql_slice_type="templated",
+            ),
+            SliceExpected(
+                sql_comparison_func=str.startswith,
+                sql_expected=" JOIN",
+                sql_slice_type="literal",
+            ),
+            SliceExpected(
+                sql_comparison_func=str.startswith,
+                sql_expected="${ref",
+                sql_slice_type="templated",
+            ),
+            SliceExpected(
+                sql_comparison_func=str.endswith,
+                sql_expected=" ON test.id = other_table.id\n",
+                sql_slice_type="literal",
+            ),
         ],
     )
 
 
-def test_slice_sqlx_template_with_full_expression_query(templater):
-    input_sqlx = """config {
-    type: "view",
-    columns: {
-        "test" : "test",
-        "value:: "value"
-    }
-}
-js {
-    var hoge = "fuga"
-}
-pre_operations {
-    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
-      RETURNS FLOAT64
-      AS ((x + 4) / y);
-}
-post_operations {
-  GRANT `roles/bigquery.dataViewer`
-      ON
-      TABLE ${self()}
-      TO "group:allusers@example.com", "user:otheruser@example.com"
-}
-
-SELECT * FROM ${ref('test')} JOIN ${ref("other_dataset", "other_table")} ON test.id = other_table.id AND test.name = ${hoge}
-"""
-    expected_sql = re.compile(
-        r"\s+SELECT \* FROM `my_project\.my_dataset\.test` JOIN `my_project\.other_dataset\.other_table` ON test\.id = other_table\.id AND test\.name = a.+\n"
-    )
+def test_slice_sqlx_template_with_full_expression_query(
+    templater, test_inputs_dir_path: Path
+):
+    input_sqlx = (test_inputs_dir_path / "query_1__raw.sqlx").read_text()
+    expected_sql = (test_inputs_dir_path / "query_1__expected.sqlx").read_text()
 
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
@@ -168,34 +127,77 @@ SELECT * FROM ${ref('test')} JOIN ${ref("other_dataset", "other_table")} ON test
     assert_slices(
         slices_raw_actual=raw_slices,
         slices_template_actual=templated_slices,
-        slices_template_type=[
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-        ],
-        slices_expected_sql_snippet_and_func=[
-            (str.startswith, "config"),
-            (str.startswith, "js"),
-            (str.startswith, "pre_operations"),
-            (str.startswith, "post_operations"),
-            (str.startswith, "\n\nSELECT *"),
-            (str.startswith, "${ref"),
-            (str.startswith, " ON test.id = other_table.id AND test.name = "),
-            (str.startswith, " JOIN"),
-            (str.startswith, "${ref"),
-            (str.startswith, "${hoge}"),
-            (str.startswith, "\n"),
+        slices_expected=[
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="config",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\n",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="js",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\n",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="pre_operations",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\n",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="post_operations",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\n\nSELECT *",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="${ref",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected=" JOIN",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="${ref",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected=" ON test.id = other_table.id AND test.name = ",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="${hoge}",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\n",
+            ),
         ],
     )
 
@@ -213,10 +215,12 @@ def test_slice_sqlx_template_with_no_ref(templater):
     assert_slices(
         slices_raw_actual=raw_slices,
         slices_template_actual=templated_slices,
-        slices_template_type=[
-            "literal",
+        slices_expected=[
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_expected="SELECT * FROM my_table WHERE true\n",
+            )
         ],
-        slices_expected_sql_snippet_and_func=["SELECT * FROM my_table WHERE true\n"],
     )
 
 
@@ -250,22 +254,46 @@ GROUP BY test
     assert_slices(
         slices_raw_actual=list_raw_slice_actual,
         slices_template_actual=templated_slices,
-        slices_template_type=[
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-            "templated",
-            "literal",
-        ],
-        slices_expected_sql_snippet_and_func=[
-            (str.startswith, "config"),
-            (str.startswith, "\nSELECT *"),
-            (str.startswith, "${ref"),
-            (str.startswith, " JOIN"),
-            (str.startswith, "${ref"),
-            (str.endswith, " ON test.id = other_table.id\n"),
-            (op_equal, "WHERE updated_at > '2020-01-01'"),
-            (str.startswith, "\nGROUP BY"),
+        slices_expected=[
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="config",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\nSELECT *",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="${ref",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected=" JOIN",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="${ref",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.endswith,
+                sql_expected=" ON test.id = other_table.id\n",
+            ),
+            SliceExpected(
+                sql_slice_type="templated",
+                sql_comparison_func=str.startswith,
+                sql_expected="${when(",
+            ),
+            SliceExpected(
+                sql_slice_type="literal",
+                sql_comparison_func=str.startswith,
+                sql_expected="\nGROUP BY",
+            ),
         ],
     )
