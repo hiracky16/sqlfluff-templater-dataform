@@ -62,31 +62,32 @@ def assert_slices(
     slices_template_actual: List[TemplatedFileSlice],
     slices_expected: List[SliceExpected],
 ):
-    extra_raw_slices = slices_raw_actual[len(slices_expected) :]
-    extra_expected_slices = slices_expected[len(slices_raw_actual) :]
-
-    assert (
-        len(slices_raw_actual) == len(slices_template_actual) == len(slices_expected)
-    ), (
-        "The length of the slices are not the same."
-        # f"\n{pformat(list(zip(slices_expected, slices_raw_actual)))}"
-        + (
-            f"Extra raw slices: {pformat(extra_raw_slices)},\nlast expected slice: {slices_expected[-1]}"
-            if extra_raw_slices
-            else f"Extra expected slices: {pformat(extra_expected_slices)},\nlast raw slice {slices_raw_actual[-1]}"
-        )
-    )
-
     for slice_raw_actual, slice_template_actual, slice_expected in zip(
         slices_raw_actual, slices_template_actual, slices_expected
     ):
         slice_raw_actual: RawFileSlice
         slice_template_actual: TemplatedFileSlice
 
-        assert slice_expected.slice_matches_expected(slice_raw=slice_raw_actual)
+        slice_expected.assert_slice_matches_expected(slice_raw=slice_raw_actual)
         assert slice_template_actual.slice_type == slice_expected.sql_slice_type, (
             f"Slice {slice_template_actual} does not match expected slice type {slice_expected!r}"
         )
+
+    extra_raw_slices = slices_raw_actual[len(slices_expected) :]
+    extra_expected_slices = slices_expected[len(slices_raw_actual) :]
+    extra_error_info = (
+        f"Extra raw slices: {pformat(extra_raw_slices)},\nlast expected slice: {slices_expected[-1]}"
+        if extra_raw_slices
+        else f"Extra expected slices: {pformat(extra_expected_slices)},\nlast raw slice {slices_raw_actual[-1]}"
+    )
+
+    assert (
+        len(slices_raw_actual) == len(slices_template_actual) == len(slices_expected)
+    ), (
+        "The length of the slices are not the same."
+        # f"\n{pformat(list(zip(slices_expected, slices_raw_actual)))}"
+        + extra_error_info
+    )
 
 
 __all__ = [

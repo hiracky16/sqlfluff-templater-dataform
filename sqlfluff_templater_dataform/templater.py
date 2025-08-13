@@ -4,8 +4,9 @@ import re
 import string
 import random
 import copy
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, overload
 from typing_extensions import override
+import operator
 
 
 # SQLFluff imports
@@ -239,52 +240,72 @@ class DataformTemplater(RawTemplater):
             blocks with the content of their inner blocks
         - Replace `${ref(<table_name>)}` with the fully qualified table name
         """
-        replaced_sql = copy.copy(sql)
+        match, pattern = self._find_next_match(sql)
 
-        replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
+        if not match or not pattern:
+            return sql
 
-        for pattern in [PATTERN_INCREMENTAL_CONDITION]:
-            replaced_sql = re.sub(
-                pattern=pattern,
-                repl=lambda match: match.group("SQL"),
-                string=replaced_sql,
+        return self._get_templated_sql(match=match, pattern=pattern)
+
+
+    @overload
+    def _get_templated_sql(self, pattern: None, match: None) -> str: ...
+    @overload
+    def _get_templated_sql(self, pattern: re.Pattern, match: re.Match) -> str: ...
+    def _get_templated_sql(self, pattern, match):
+        if operator.xor(
+            pattern is None,
+            match is None,
+        ):
+            raise ValueError(
+                "Both pattern and match must be provided to _get_templated_sql."
             )
 
-        # Replace js script and config blocks with newlines
-        for pattern in [
-            PATTERN_BLOCK_CONFIG,
-            PATTERN_BLOCK_JS,
-        ]:
-            _LOGGER.debug(f"Replacing block pattern with newline: {pattern.__doc__!r}")
-            replaced_sql = re.sub(pattern, "\n", replaced_sql)
+        rtn_templated_sql = ""
 
-        return replaced_sql
+        if pattern and match:
+            if pattern in [
+                PATTERN_BLOCK_POST_OPERATION,
+                PATTERN_BLOCK_PRE_OPERATION,
+                PATTERN_INCREMENTAL_CONDITION,
+            ]:
+                rtn_templated_sql = match.group("SQL")
 
-    def _get_templated_sql(self, pattern: re.Pattern, match: re.Match) -> str:
-        if pattern in [
-            PATTERN_BLOCK_POST_OPERATION,
-            PATTERN_BLOCK_PRE_OPERATION,
-            PATTERN_INCREMENTAL_CONDITION,
-        ]:
-            return match.group("SQL")
+            elif pattern == PATTERN_REFERENCE:
+                rtn_templated_sql = self._ref_to_table(match=match)
 
-        if pattern == PATTERN_REFERENCE:
-            return self._ref_to_table(match=match)
+            elif pattern == PATTERN_INTERPOLATION:
+                rtn_templated_sql = f"'{match.group('variable')}'"
 
-        if pattern == PATTERN_INTERPOLATION:
-            return f"'{match.group('variable')}'"
+            elif pattern in [
+                PATTERN_BLOCK_JS,
+                PATTERN_BLOCK_CONFIG,
+            ]:
+                rtn_templated_sql = "\n"
 
-        if pattern in [
-            PATTERN_BLOCK_JS,
-            PATTERN_BLOCK_CONFIG,
-        ]:
-            return "\n"
+            else:
+                raise NotImplementedError(
+                    f"Pattern {pattern!r} ({pattern.__doc__}) does not have a _get_templated_sql implementation."
+                    f" Implement what should happen when this pattern is found in `_get_templated_sql`"
+                    " or provide a `SQL` group in the pattern."
+                )
 
-        raise NotImplementedError(
-            f"Pattern {pattern!r} ({pattern.__doc__}) does not have a _get_templated_sql implementation."
-            f" Implement what should happen when this pattern is found in `_get_templated_sql`"
-            " or provide a `SQL` group in the pattern."
-        )
+        internal_match, internal_pattern = self._find_next_match(rtn_templated_sql)
+
+        if internal_match and internal_pattern:
+            _LOGGER.debug(
+                f"Found internal match {internal_match.group(0)!r} with pattern {internal_pattern.__doc__!r}"
+            )
+            return (
+                rtn_templated_sql[: internal_match.start()]
+                + self._get_templated_sql(
+                    pattern=internal_pattern,
+                    match=internal_match,
+                )
+                + rtn_templated_sql[internal_match.end() :]
+            )
+
+        return rtn_templated_sql
 
     def _generate_slices(
         self,
@@ -320,6 +341,28 @@ class DataformTemplater(RawTemplater):
             ),
             sql_templated,
         )
+
+    def _find_next_match(
+        self, sql_snippet: str
+    ) -> Tuple[re.Match, re.Pattern] | Tuple[None, None]:
+        """Find the next match in the SQL snippet.
+
+        :returns: The match and pattern used to match or `None` if no match
+        """
+        next_match: re.Match | None = None
+        next_pattern: re.Pattern | None = None
+
+        for _pattern_name, pattern in DICT_PATTERN.items():
+            # Find the next immediate match
+            match = re.search(pattern, sql_snippet)
+            if match and (not next_match or next_match.start() > match.start()):
+                next_match = match
+                next_pattern = pattern
+
+        if not next_match or not next_pattern:
+            return None, None
+
+        return next_match, next_pattern
 
     def slice_sqlx_template(
         self, sql: str
@@ -367,18 +410,9 @@ class DataformTemplater(RawTemplater):
 
         # Go though the SQL string
         while raw_idx < len(sql):
-            next_match: re.Match | None = None
-            next_pattern: re.Pattern | None = None
+            next_match, next_pattern = self._find_next_match(sql[raw_idx:])
 
-            # Find the first match for each pattern
-            for _pattern_name, pattern in DICT_PATTERN.items():
-                # Find the next immediate match
-                match = re.search(pattern, sql[raw_idx:])
-                if match and (not next_match or next_match.start() > match.start()):
-                    next_match = match
-                    next_pattern = pattern
-
-            if not next_match:
+            if not next_match or not next_pattern:
                 _LOGGER.debug(f"No more matches found past index {raw_idx}")
                 # If no more patterns matches, add the rest as literals
                 raw_slices.append(

@@ -10,7 +10,7 @@
 
   GRANT `roles/bigquery.dataViewer`
       ON
-      TABLE ${self()}
+      TABLE 'self()'
       TO "group:allusers@example.com", "user:otheruser@example.com";
 
 

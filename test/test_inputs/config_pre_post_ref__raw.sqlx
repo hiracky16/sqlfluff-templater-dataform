@@ -2,7 +2,7 @@ config {
 type: "table",
 columns: {
     "test" : "test",
-    "value:: "value"
+    "value": "value"
 }
 }
 pre_operations {
