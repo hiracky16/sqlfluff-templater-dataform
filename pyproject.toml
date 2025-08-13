@@ -16,7 +16,8 @@ keywords = [
     "dataform",
 ]
 dependencies = [
-    "sqlfluff==3.4.2"
+    "sqlfluff==3.4.2",
+    "typing-extensions>=4.14.1",
 ]
 
 [project.entry-points.sqlfluff]
@@ -24,6 +25,15 @@ sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
 
 [tool.setuptools.packages.find]
 include = ["sqlfluff_templater_dataform"]
+
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "pytest-sugar>=1.0.0",
+    "sqlfluff>=3.4.2",
+]
 
 [project.urls]
 Repository = "https://github.com/hiracky16/sqlfluff-templater-dataform.git"

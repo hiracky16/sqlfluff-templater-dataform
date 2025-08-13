@@ -9,5 +9,4 @@ project_id = project_id
 dataset_id = dataform
 
 [sqlfluff:rules:capitalisation.keywords]
-# 予約語の大文字小文字
 capitalisation_policy = upper
