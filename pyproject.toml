@@ -35,7 +35,6 @@ dev = [
     "pytest-cov>=6.2.1",
     "pytest-sugar>=1.0.0",
     "ruff>=0.12.8",
-    "sqlfluff>=3.4.2",
 ]
 
 [project.urls]
