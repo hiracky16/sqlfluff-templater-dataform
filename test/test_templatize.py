@@ -16,7 +16,7 @@ import pytest
     [
         (
             r"SELECT * FROM ${hoge}, ${hoge.fuga('another')}",
-            r"SELECT * FROM 'hoge', 'hoge.fuga(\'another\')'",
+            r"SELECT * FROM 'hoge', 'hoge.fuga(''another'')'",
         ),
         (
             """SELECT * FROM ${
@@ -24,7 +24,7 @@ import pytest
             }, ${
             hoge.fuga('another')
             }""",
-            """SELECT * FROM 'hoge', 'hoge.fuga(\\'another\\')'""",
+            """SELECT * FROM 'hoge', 'hoge.fuga(''another'')'""",
         ),
         (
             # Ensure a recursive pattern is allowed

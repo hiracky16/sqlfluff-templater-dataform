@@ -252,6 +252,8 @@ class DataformTemplater(RawTemplater):
 
         rtn_templated_sql = ""
 
+        _should_escape_single_quotes = False
+
         if pattern and match:
             if pattern in [
                 PATTERN_BLOCK_OPERATION,
@@ -270,12 +272,14 @@ class DataformTemplater(RawTemplater):
             elif pattern == PATTERN_REFERENCE_SELF:
                 rtn_templated_sql = f"`{self.project_id}.{self.dataset_id}.self`"
 
-
             elif pattern == PATTERN_INTERPOLATION:
+                print(f"""Found inner variable: {match.group("variable")}""")
                 rtn_templated_sql = (
-                    "'" + match.group("variable").strip().replace("'", "\\'") + "'"
+                    "'"
+                    + re.sub(r"(?<!')'(?!')", r"''", match.group("variable").strip())
+                    + "'"
                 )
-                # ^ replace with a single-quoted string, escaping single quotes within the variable
+                _should_escape_single_quotes = True
 
             elif pattern in [
                 PATTERN_BLOCK_JS,
@@ -297,21 +301,31 @@ class DataformTemplater(RawTemplater):
 
             internal_match, internal_pattern = self._find_next_match(rtn_templated_sql)
 
-            if internal_match and internal_pattern:
-                _LOGGER.debug(
-                    f"Found internal match {internal_match.group(0)!r} with pattern {internal_pattern.__doc__!r}"
-                )
-                rtn_templated_sql = (
-                    rtn_templated_sql[: internal_match.start()]
-                    + self._get_templated_sql(
-                        pattern=internal_pattern,
-                        match=internal_match,
-                    )
-                    + rtn_templated_sql[internal_match.end() :]
-                )
-
             if not internal_match or not internal_pattern:
                 break
+
+            _LOGGER.debug(
+                f"Found internal match {internal_match.group(0)!r} with pattern {internal_pattern.__doc__!r}"
+            )
+            inner_templated_sql = self._get_templated_sql(
+                pattern=internal_pattern,
+                match=internal_match,
+            )
+
+            if _should_escape_single_quotes:
+                inner_templated_sql = re.sub(
+                    r"(?<!')'(?!')",
+                    r"''",
+                    inner_templated_sql,
+                )
+
+            rtn_templated_sql = (
+                rtn_templated_sql[: internal_match.start()]
+                + inner_templated_sql
+                # ^ replace with a single-quoted string, escaping single quotes within the variable
+                #   Note: a escaped single quote is represented as two single quotes
+                + rtn_templated_sql[internal_match.end() :]
+            )
 
         return rtn_templated_sql
 

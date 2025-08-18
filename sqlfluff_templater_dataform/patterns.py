@@ -62,13 +62,27 @@ PATTERN_REFERENCE_SELF = re.compile(
 
 PATTERN_INTERPOLATION = re.compile(
     r"""
-    (?<!\\)\$           # Match `$` and don't allow an escape
-    (?<!\\)\{           # Match `{` and don't allow an escape
-    (?!ref)             # Don't match ref()
-    \s*(?P<variable>(?:[^\\}]|\\})+)\s*
-        # Get the variable content (for hashing)
-        # This matches anything but `}`, and does allow a `\}` for escaping
-    (?<!\\)\}           # Match `}` and don't allow an escape
+    (?<!\\)\$\{                  # Match unescaped ${
+    (?!ref)                      # Negative lookahead: not ref
+    (?P<variable>                    # Capture the entire expression body
+        (?:
+            [^\\}`]+
+                # ^ Match normal content
+                #   (everything but closing curly brace and backtick)
+            | \\[}`]             # Allow escaped } and `
+            | `(?:
+                # ^ Match backtick-quoted string (for JS string interpolation)
+                [^`\\]*          #   Normal inside content
+                (?:\\.[^`\\]*)*  #   Handle escapes inside backtick
+                (?:              #   Inner `${...}` pattern
+                    (?<!\\)\$\{
+                    (?P<inner>[^{}]*)  # (optional) capture inner var, no nesting
+                    \}
+                )?
+            )`
+        )*
+    )
+    (?<!\\)\}                    # Closing unescaped }
     """,
     flags=re.DOTALL | re.VERBOSE,
 )

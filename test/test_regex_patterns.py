@@ -56,6 +56,13 @@ from sqlfluff_templater_dataform import (
         (PATTERN_INTERPOLATION, r"${some_variable}", {"variable": "some_variable"}),
         (PATTERN_INTERPOLATION, r"\${some_var}", False),
         (PATTERN_INTERPOLATION, r"${some_js_var + 1}", {"variable": "some_js_var + 1"}),
+        (
+            PATTERN_INTERPOLATION,
+            r"""FARMFINGERPRINT(${_data_table.primary_key_columns.map((col) => `${col} AS ${col}`).join(", ")})""",
+            {
+                "variable": r"""_data_table.primary_key_columns.map((col) => `${col} AS ${col}`).join(", ")"""
+            },
+        ),
     ],
 )
 def test_regex_pattern(

@@ -2,4 +2,4 @@ pre_operations { SELECT * FROM ${hoge}, ${hoge.fuga('another')} }
 
 -->
 
-SELECT * FROM 'hoge', 'hoge.fuga(\'another\')';
+SELECT * FROM 'hoge', 'hoge.fuga(''another'')';

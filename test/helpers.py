@@ -38,6 +38,10 @@ def assert_sql_is_equal(
         expected_sql = re.sub(r"\s+", " ", expected_sql).strip()
         actual_sql = re.sub(r"\s+", " ", actual_sql).strip()
 
+    # expected_sql = re.sub(r"(?<!')''(?!')", r"'", expected_sql)
+    # ^ When comparing strings that come from SQL files, the escape sequence is doubled single-quote,
+    #   This needs to be converted to an escaped single quote in python
+
     assert expected_sql == actual_sql, (
         f"EXPECTED:\n{expected_sql!r}\nACTUAL:\n{actual_sql!r}"
     )

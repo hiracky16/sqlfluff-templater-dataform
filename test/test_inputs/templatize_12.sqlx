@@ -1,0 +1,12 @@
+SELECT
+    FARM_FINGERPRINT(TO_JSON_STRING(STRUCT(
+        ${_data_table.primary_key_columns.map((col) => `${col} AS ${col}`).join(", ")}
+    ))) AS _meta_fingerprint_type1
+FROM my_table
+
+-->
+SELECT
+    FARM_FINGERPRINT(TO_JSON_STRING(STRUCT(
+        '_data_table.primary_key_columns.map((col) => `''col'' AS ''col''`).join(", ")'
+    ))) AS _meta_fingerprint_type1
+FROM my_table
