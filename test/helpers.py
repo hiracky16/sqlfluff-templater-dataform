@@ -104,6 +104,18 @@ def assert_slices(
         + extra_error_info
     )
 
+    # Make sure the slices are contiguous
+    # i.e. the end of one slice should be the start of the next
+    for _slice_a, _slice_b in zip(
+        slices_template_actual[:-1], slices_template_actual[1:]
+    ):
+        assert _slice_a.source_slice.stop == _slice_b.source_slice.start, (
+            f"Raw slices are not contiguous: {_slice_a} and {_slice_b}"
+        )
+        assert _slice_a.templated_slice.stop == _slice_b.templated_slice.start, (
+            f"Template slices are not contiguous: {_slice_a} and {_slice_b}"
+        )
+
 
 __all__ = [
     "assert_sql_is_equal",
