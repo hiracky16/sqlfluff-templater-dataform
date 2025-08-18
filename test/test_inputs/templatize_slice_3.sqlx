@@ -1,0 +1,14 @@
+config {
+    type: "view",
+    columns: {
+        "test" : "test",
+        "value": "value"
+    }
+}
+
+
+SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
+
+-->
+
+SELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id

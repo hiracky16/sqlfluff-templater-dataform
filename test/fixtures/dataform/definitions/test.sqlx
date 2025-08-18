@@ -6,11 +6,11 @@ config {
     ],
     description: "test sqlx file for lint by sqlfluff-templater-dataform.",
     columns: {
-        user_id: "ユーザーID",
-        name: "ユーザー名",
-        age: "年齢",
-        order_date: "注文日",
-        order_count: "注文回数"
+        user_id: "some user_id description",
+        name: "some name description",
+        age: "some age description",
+        order_date: "some order_date description",
+        order_count: "some order_count description"
     }
 }
 
@@ -38,5 +38,5 @@ SELECT
     COUNT(order_id) AS order_count
 FROM users LEFT OUTER JOIN user_orders ON users.user_id = user_orders.user_id
 WHERE TRUE
-${when(incremental(), `WHERE users.updated_at > (SELECT MAX(updated_at) FROM ${self()})`)}
+${when(incremental(), `AND users.updated_at > (SELECT MAX(updated_at) FROM ${self()})`)}
 GROUP BY user_id, name, age, order_date

@@ -1,0 +1,13 @@
+js {
+    const some_function = (a,b) => {
+        return a + b;
+    };
+}
+
+
+SELECT *, ${some_function("a_val","b_val")} AS some_alias
+FROM some_table
+
+-->
+SELECT *, 'some_function("a_val","b_val")' AS some_alias
+FROM some_table

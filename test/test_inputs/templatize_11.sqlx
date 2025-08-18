@@ -1,0 +1,13 @@
+js {
+    const some_function = (a,b) => {
+        return a + b;
+    };
+}
+
+
+SELECT *, ${self()} AS some_alias
+FROM some_table
+
+-->
+SELECT *, `my_project.my_dataset.self` AS some_alias
+FROM some_table

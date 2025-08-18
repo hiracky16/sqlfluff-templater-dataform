@@ -5,6 +5,7 @@ description = "Lint your dataform project SQL"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
   {name = "hiracky16"},
+  {name = "Clayton Roberts", email = "claytonjroberts@icloud.com"},
 ]
 license = {file = "LICENSE.md"}
 keywords = [
@@ -16,7 +17,8 @@ keywords = [
     "dataform",
 ]
 dependencies = [
-    "sqlfluff==3.4.2"
+    "sqlfluff==3.4.2",
+    "typing-extensions>=4.14.1",
 ]
 
 [project.entry-points.sqlfluff]
@@ -24,6 +26,17 @@ sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
 
 [tool.setuptools.packages.find]
 include = ["sqlfluff_templater_dataform"]
+
+[tool.ruff]
+lint.ignore = ["F403"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "pytest-sugar>=1.0.0",
+    "ruff>=0.12.8",
+]
 
 [project.urls]
 Repository = "https://github.com/hiracky16/sqlfluff-templater-dataform.git"

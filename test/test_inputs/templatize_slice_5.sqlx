@@ -1,0 +1,19 @@
+config {
+    type: "incremental",
+    columns: {
+        "test" : "test",
+        "value" : "value"
+    }
+}
+SELECT * FROM ${ref('test')} JOIN ${ref('other_table')}
+  ON test.id = other_table.id
+    ${when(incremental(), "WHERE updated_at > '2020-01-01'")}
+GROUP BY test
+
+-->
+
+
+SELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table`
+  ON test.id = other_table.id
+WHERE updated_at > '2020-01-01'
+GROUP BY test

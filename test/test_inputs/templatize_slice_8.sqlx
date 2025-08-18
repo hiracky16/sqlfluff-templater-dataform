@@ -1,0 +1,8 @@
+config {
+    type: "table"
+}
+SELECT 1 AS value FROM ${ref('test')} WHERE true
+
+-->
+
+SELECT 1 AS value FROM `my_project.my_dataset.test` WHERE true

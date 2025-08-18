@@ -1,0 +1,41 @@
+config {
+    type: "view",
+    columns: {
+        "test" : "test",
+        "value" : "value"
+    }
+}
+js {
+    var hoge = "fuga"
+}
+pre_operations {
+    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
+      RETURNS FLOAT64
+      AS ((x + 4) / y);
+}
+post_operations {
+  GRANT `roles/bigquery.dataViewer`
+      ON
+      TABLE ${self()}
+      TO "group:allusers@example.com", "user:otheruser@example.com";
+}
+
+SELECT * FROM ${ref('test')} JOIN ${ref("other_dataset", "other_table")} ON test.id = other_table.id AND test.name = ${hoge}
+
+-->
+
+
+
+
+    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
+      RETURNS FLOAT64
+      AS ((x + 4) / y);
+
+
+  GRANT `roles/bigquery.dataViewer`
+      ON
+      TABLE `my_project.my_dataset.self`
+      TO "group:allusers@example.com", "user:otheruser@example.com";
+
+
+SELECT * FROM `my_project.my_dataset.test` JOIN `my_project.other_dataset.other_table` ON test.id = other_table.id AND test.name = 'hoge'
