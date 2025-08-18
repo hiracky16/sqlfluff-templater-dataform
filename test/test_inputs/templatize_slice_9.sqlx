@@ -1,0 +1,5 @@
+SELECT * FROM my_table WHERE true
+
+-->
+
+SELECT * FROM my_table WHERE true

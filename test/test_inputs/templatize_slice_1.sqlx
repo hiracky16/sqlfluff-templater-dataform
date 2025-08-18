@@ -27,7 +27,7 @@ AS ((x + 4) / y);
 
     GRANT `roles/bigquery.dataViewer`
     ON
-    TABLE 'self()'
+    TABLE `my_project.my_dataset.self`
     TO "group:allusers@example.com", "user:otheruser@example.com";
 
 SELECT * FROM `my_project.my_dataset.test` WHERE true

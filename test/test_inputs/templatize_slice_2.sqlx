@@ -34,7 +34,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref("other_dataset", "other_table")} ON test
 
   GRANT `roles/bigquery.dataViewer`
       ON
-      TABLE 'self()'
+      TABLE `my_project.my_dataset.self`
       TO "group:allusers@example.com", "user:otheruser@example.com";
 
 

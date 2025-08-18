@@ -9,5 +9,5 @@ post_operations {
 
     GRANT `roles/bigquery.dataViewer`
     ON
-    TABLE 'self()'
+    TABLE `my_project.my_dataset.self`
     TO "group:allusers@example.com", "user:otheruser@example.com";

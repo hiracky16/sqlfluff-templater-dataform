@@ -24,6 +24,7 @@ from .patterns import (
     PATTERN_BLOCK_OPERATION,
     PATTERN_BLOCK_JS,
     PATTERN_REFERENCE,
+    PATTERN_REFERENCE_SELF,
     PATTERN_INCREMENTAL_CONDITION,
     PATTERN_INTERPOLATION,
     DICT_PATTERN,
@@ -266,6 +267,10 @@ class DataformTemplater(RawTemplater):
             elif pattern == PATTERN_REFERENCE:
                 rtn_templated_sql = self._ref_to_table(match=match)
 
+            elif pattern == PATTERN_REFERENCE_SELF:
+                rtn_templated_sql = f"`{self.project_id}.{self.dataset_id}.self`"
+
+
             elif pattern == PATTERN_INTERPOLATION:
                 rtn_templated_sql = (
                     "'" + match.group("variable").strip().replace("'", "\\'") + "'"
@@ -277,7 +282,7 @@ class DataformTemplater(RawTemplater):
                 PATTERN_BLOCK_CONFIG,
             ]:
                 # For patterns that are just config or JS, just replace with a newline
-                rtn_templated_sql = "\n"
+                rtn_templated_sql = ""
 
             else:
                 raise NotImplementedError(

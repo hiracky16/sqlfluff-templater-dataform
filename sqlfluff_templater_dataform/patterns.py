@@ -37,16 +37,28 @@ PATTERN_BLOCK_JS = re.compile(r"js\s*\{(?:[^{}]|\{[^{}]*\})*\}", flags=re.DOTALL
 """Match js blocks. i.e. `js { ... }`"""
 
 PATTERN_REFERENCE = re.compile(
-    r"""\$\{\s*
-        ref\(\s*                # Match ref()
-        [\'"]([^\'"]+)[\'"]
-        (?:\s*,\s*[\'"]
-            ([^\'"]+)
-            [\'"])?
-        \s*\)\s*\}""",
+    r"""
+    \$\{\s*
+    ref\(\s*                # Match ref()
+    [\'"]([^\'"]+)[\'"]
+    (?:\s*,\s*[\'"]
+        ([^\'"]+)
+        [\'"])?
+    \s*\)\s*\}
+    """,
     flags=re.DOTALL | re.VERBOSE,
 )
 """Match ref patterns. i.e. `${ref('dataset', 'model')}`"""
+
+PATTERN_REFERENCE_SELF = re.compile(
+    r"""
+    \$\{\s*
+    self\(\s*\)                # Match self()
+    \s*\}
+    """,
+    flags=re.DOTALL | re.VERBOSE,
+)
+"""Match self ref patterns. i.e. `${self()}`"""
 
 PATTERN_INTERPOLATION = re.compile(
     r"""
@@ -80,6 +92,7 @@ DICT_PATTERN = {
     "operations": PATTERN_BLOCK_OPERATION,
     "js": PATTERN_BLOCK_JS,
     "ref": PATTERN_REFERENCE,
+    "ref_self": PATTERN_REFERENCE_SELF,
     "incremental_condition": PATTERN_INCREMENTAL_CONDITION,
     "interpolation": PATTERN_INTERPOLATION,
 }
@@ -89,6 +102,7 @@ __all__ = [
     "PATTERN_BLOCK_OPERATION",
     "PATTERN_BLOCK_JS",
     "PATTERN_REFERENCE",
+    "PATTERN_REFERENCE_SELF",
     "PATTERN_INCREMENTAL_CONDITION",
     "PATTERN_INTERPOLATION",
     "DICT_PATTERN",

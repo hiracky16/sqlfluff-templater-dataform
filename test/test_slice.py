@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 
 from .helpers import (
     assert_sql_is_equal,
@@ -11,445 +13,336 @@ from .helpers import (
 from .constants import TEST_INPUT_FILE_SEPARATOR
 
 
-def test_slice_sqlx_template_with_config_and_ref(templater):
-    input_sqlx = """config {
-    type: "table"
-}
-SELECT 1 AS value FROM ${ref('test')} WHERE true
-"""
-    expected_sql = (
-        "\n\nSELECT 1 AS value FROM `my_project.my_dataset.test` WHERE true\n"
-    )
-    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
-        input_sqlx
-    )
-    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
-
-    assert_slices(
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-        slices_expected=[
-            SliceExpected(
-                "config", sql_slice_type="templated", sql_comparison_func=str.startswith
-            ),
-            SliceExpected(
-                "\nSELECT 1",
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                "${ref", sql_slice_type="templated", sql_comparison_func=str.startswith
-            ),
-            SliceExpected(" WHERE true\n", sql_slice_type="literal"),
-        ],
-    )
-
-
-def test_slice_sqlx_template_with_multiple_refs(templater):
-    input_sqlx = """config {
-    type: "view",
-    columns: {
-        "test" : "test",
-        "value:: "value"
-    }
-}
-SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
-"""
-    expected_sql = "\n\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
-
-    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
-        input_sqlx
-    )
-
-    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
-
-    assert_slices(
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-        slices_expected=[
-            SliceExpected(
-                sql_comparison_func=str.startswith,
-                sql_expected="config",
-                sql_slice_type="templated",
-            ),
-            SliceExpected(
-                sql_comparison_func=str.startswith,
-                sql_expected="\nSELECT *",
-                sql_slice_type="literal",
-            ),
-            SliceExpected(
-                sql_comparison_func=str.startswith,
-                sql_expected="${ref",
-                sql_slice_type="templated",
-            ),
-            SliceExpected(
-                sql_comparison_func=str.startswith,
-                sql_expected=" JOIN",
-                sql_slice_type="literal",
-            ),
-            SliceExpected(
-                sql_comparison_func=str.startswith,
-                sql_expected="${ref",
-                sql_slice_type="templated",
-            ),
-            SliceExpected(
-                sql_comparison_func=str.endswith,
-                sql_expected=" ON test.id = other_table.id\n",
-                sql_slice_type="literal",
-            ),
-        ],
-    )
-
-
-def test_slice_sqlx_template_with_full_expression_query(
-    templater, test_inputs_dir_path: Path
-):
-    input_sqlx, expected_sql = (
-        (test_inputs_dir_path / "templatize_slice_2.sqlx")
-        .read_text()
-        .split(TEST_INPUT_FILE_SEPARATOR)
-    )
-
-    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
-        input_sqlx
-    )
-
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql, ignore_whitespace=True
-    )
-
-    assert_slices(
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-        slices_expected=[
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="config",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\n",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="js",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\n",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="pre_operations",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\n",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="post_operations",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\n\nSELECT *",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="${ref",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected=" JOIN",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="${ref",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected=" ON test.id = other_table.id AND test.name = ",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="${hoge}",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\n",
-            ),
-        ],
-    )
-
-
-def test_slice_sqlx_template_with_no_ref(templater):
-    input_sqlx = """SELECT * FROM my_table WHERE true
-"""
-    expected_sql = "SELECT * FROM my_table WHERE true\n"
-
-    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
-        input_sqlx
-    )
-    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
-
-    assert_slices(
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-        slices_expected=[
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_expected="SELECT * FROM my_table WHERE true\n",
-            )
-        ],
-    )
-
-
-def test_slice_sqlx_template_with_incremental_table(templater):
-    input_sqlx = """config {
-    type: "incremental",
-    columns: {
-        "test" : "test",
-        "value:: "value"
-    }
-}
-SELECT * FROM ${ref('test')} JOIN ${ref('other_table')}
-  ON test.id = other_table.id
-${when(incremental(), "WHERE updated_at > '2020-01-01'")}
-GROUP BY test
-"""
-    expected_sql = """
-
-SELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table`
-  ON test.id = other_table.id
-WHERE updated_at > '2020-01-01'
-GROUP BY test
-"""
-
-    replaced_sql, list_raw_slice_actual, templated_slices = (
-        templater.slice_sqlx_template(input_sqlx)
-    )
-
-    assert_sql_is_equal(expected_sql=expected_sql, actual_sql=replaced_sql)
-
-    assert_slices(
-        slices_raw_actual=list_raw_slice_actual,
-        slices_template_actual=templated_slices,
-        slices_expected=[
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="config",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\nSELECT *",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="${ref",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected=" JOIN",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="${ref",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.endswith,
-                sql_expected=" ON test.id = other_table.id\n",
-            ),
-            SliceExpected(
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-                sql_expected="${when(",
-            ),
-            SliceExpected(
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-                sql_expected="\nGROUP BY",
-            ),
-        ],
-    )
-
-
-def test_slice_sqlx_with_config_and_ref(templater, test_inputs_dir_path):
-    input_sqlx, expected_sql = (
-        (test_inputs_dir_path / "templatize_slice_4.sqlx")
-        .read_text()
-        .split(TEST_INPUT_FILE_SEPARATOR)
-    )
-    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
-        input_sqlx
-    )
-
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql, ignore_whitespace=True
-    )
-
-    assert_slices(
-        slices_expected=[
-            SliceExpected(
-                sql_expected="config",
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected="\nSELECT *",
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected="${ref(",
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected=" WHERE true",
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-            ),
-        ],
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-    )
-
-
-def test_slice_sqlx_with_multiple_refs(templater, test_inputs_dir_path: Path):
-    input_sqlx, expected_sql = (
-        (test_inputs_dir_path / "templatize_slice_3.sqlx")
-        .read_text()
-        .split(TEST_INPUT_FILE_SEPARATOR)
-    )
-    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
-        input_sqlx
-    )
-
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql, ignore_whitespace=True
-    )
-
-    assert_slices(
-        slices_expected=[
-            SliceExpected(
-                sql_expected="config",
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected="\n\n\nSELECT *",
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected="${ref(",
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected=" JOIN",
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected="${ref(",
-                sql_slice_type="templated",
-                sql_comparison_func=str.startswith,
-            ),
-            SliceExpected(
-                sql_expected=" ON test.id = other_table.id",
-                sql_slice_type="literal",
-                sql_comparison_func=str.startswith,
-            ),
-        ],
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-    )
-
-
-def test_slice_sqlx_with_post_pre_operations_config_and_ref(
+@pytest.mark.parametrize(
+    [
+        "file_name",
+        "test_description",
+        "slices_expected",
+    ],
+    [
+        (
+            "templatize_slice_8.sqlx",
+            "config_and_ref",
+            [
+                SliceExpected(
+                    "config",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    "\nSELECT 1",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    "${ref",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(" WHERE true\n", sql_slice_type="literal"),
+            ],
+        ),
+        (
+            "templatize_slice_7.sqlx",
+            "multiple_refs",
+            [
+                SliceExpected(
+                    sql_comparison_func=str.startswith,
+                    sql_expected="config",
+                    sql_slice_type="templated",
+                ),
+                SliceExpected(
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\nSELECT *",
+                    sql_slice_type="literal",
+                ),
+                SliceExpected(
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${ref",
+                    sql_slice_type="templated",
+                ),
+                SliceExpected(
+                    sql_comparison_func=str.startswith,
+                    sql_expected=" JOIN",
+                    sql_slice_type="literal",
+                ),
+                SliceExpected(
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${ref",
+                    sql_slice_type="templated",
+                ),
+                SliceExpected(
+                    sql_comparison_func=str.endswith,
+                    sql_expected=" ON test.id = other_table.id\n",
+                    sql_slice_type="literal",
+                ),
+            ],
+        ),
+        (
+            "templatize_slice_2.sqlx",
+            "full_expression_query",
+            [
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="config",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\n",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="js",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\n",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="pre_operations",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\n",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="post_operations",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\n\nSELECT *",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${ref",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected=" JOIN",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${ref",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected=" ON test.id = other_table.id AND test.name = ",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${hoge}",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\n",
+                ),
+            ],
+        ),
+        (
+            "templatize_slice_5.sqlx",
+            "incremental_table",
+            [
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="config",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\nSELECT *",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${ref",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected=" JOIN",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${ref",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.endswith,
+                    sql_expected=" ON test.id = other_table.id\n    ",
+                ),
+                SliceExpected(
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="${when(",
+                ),
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                    sql_expected="\nGROUP BY",
+                ),
+            ],
+        ),
+        (
+            "templatize_slice_4.sqlx",
+            "config_and_ref",
+            [
+                SliceExpected(
+                    sql_expected="config",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="\nSELECT *",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="${ref(",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected=" WHERE true",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+            ],
+        ),
+        (
+            "templatize_slice_3.sqlx",
+            "multiple_refs",
+            [
+                SliceExpected(
+                    sql_expected="config",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="\n\n\nSELECT *",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="${ref(",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected=" JOIN",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="${ref(",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected=" ON test.id = other_table.id",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+            ],
+        ),
+        (
+            "templatize_slice_1.sqlx",
+            "post_pre_operations_config_and_ref",
+            [
+                SliceExpected(
+                    sql_expected="config",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="\n",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="pre_operations",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="\n",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="post_operations",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="\nSELECT *",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected="${ref(",
+                    sql_slice_type="templated",
+                    sql_comparison_func=str.startswith,
+                ),
+                SliceExpected(
+                    sql_expected=" WHERE true",
+                    sql_slice_type="literal",
+                    sql_comparison_func=str.startswith,
+                ),
+            ],
+        ),
+        (
+            "templatize_slice_9.sqlx",
+            "no_ref",
+            [
+                SliceExpected(
+                    sql_slice_type="literal",
+                    sql_expected="SELECT * FROM my_table WHERE true\n",
+                )
+            ],
+        ),
+    ],
+)
+def test_slicing(
     templater,
     test_inputs_dir_path: Path,
+    file_name: str,
+    test_description: str,
+    slices_expected: list[SliceExpected],
 ):
     input_sqlx, expected_sql = (
-        (test_inputs_dir_path / "templatize_slice_1.sqlx")
-        .read_text()
-        .split(TEST_INPUT_FILE_SEPARATOR)
+        (test_inputs_dir_path / file_name).read_text().split(TEST_INPUT_FILE_SEPARATOR)
     )
-
-    slices_expected = [
-        SliceExpected(
-            sql_expected="config",
-            sql_slice_type="templated",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected="\n",
-            sql_slice_type="literal",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected="pre_operations",
-            sql_slice_type="templated",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected="\n",
-            sql_slice_type="literal",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected="post_operations",
-            sql_slice_type="templated",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected="\nSELECT *",
-            sql_slice_type="literal",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected="${ref(",
-            sql_slice_type="templated",
-            sql_comparison_func=str.startswith,
-        ),
-        SliceExpected(
-            sql_expected=" WHERE true",
-            sql_slice_type="literal",
-            sql_comparison_func=str.startswith,
-        ),
-    ]
-
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(
         input_sqlx
     )
 
-    assert_sql_is_equal(
-        expected_sql=expected_sql, actual_sql=replaced_sql, ignore_whitespace=True
-    )
+    try:
+        assert_sql_is_equal(
+            expected_sql=expected_sql, actual_sql=replaced_sql, ignore_whitespace=True
+        )
 
-    assert_slices(
-        slices_expected=slices_expected,
-        slices_raw_actual=raw_slices,
-        slices_template_actual=templated_slices,
-    )
+        assert_slices(
+            slices_raw_actual=raw_slices,
+            slices_template_actual=templated_slices,
+            slices_expected=slices_expected,
+        )
+    except AssertionError as exc:
+        raise AssertionError(f"Failed test: {file_name} - {test_description}") from exc
