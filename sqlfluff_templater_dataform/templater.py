@@ -435,7 +435,7 @@ class DataformTemplater(RawTemplater):
                     ),
                     templated_slice=slice(
                         templated_idx,
-                        templated_idx + len(sql_templated),
+                        templated_idx + len(_sql_templated_snippet),
                     ),
                 ),
             )
