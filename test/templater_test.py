@@ -197,7 +197,7 @@ def test_slice_sqlx_template_with_incremental_table(templater):
 }
 SELECT * FROM ${ref('test')} JOIN ${ref('other_table')}
   ON test.id = other_table.id
-${when(incremantal(), "WHERE updated_at > '2020-01-01'")}
+${ when(incremantal(), "WHERE updated_at > '2020-01-01'")}
 GROUP BY test
 """
     expected_sql = """
@@ -217,7 +217,7 @@ GROUP BY test
     assert raw_slices[3].raw.startswith(' JOIN')
     assert raw_slices[4].raw.startswith('${ref')
     assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
-    assert raw_slices[6].raw.startswith("${when")
+    assert raw_slices[6].raw.startswith("${ when")
     assert raw_slices[7].raw.startswith("\nGROUP BY")
 
     assert len(templated_slices) == 8
