@@ -90,14 +90,18 @@ class DataformTemplater(RawTemplater):
         return bool(pattern.search(sql))
 
     def replace_blocks(self, in_str: str) -> str:
-        for block_pattern in [
-            CONFIG_BLOCK_PATTERN,
-            PRE_OPERATION_BLOCK_PATTERN,
-            POST_OPERATION_BLOCK_PATTERN
-        ]:
-            pattern = re.compile(block_pattern, re.DOTALL)
-            in_str = re.sub(pattern, '', in_str)
-
+        # Remove config blocks (metadata)
+        in_str = re.sub(re.compile(CONFIG_BLOCK_PATTERN, re.DOTALL), '', in_str)
+        
+        # Extract SQL content from pre_operations and post_operations blocks, removing the block syntax
+        # Replace "pre_operations { ... }" with just the content inside braces
+        in_str = re.sub(re.compile(PRE_OPERATION_BLOCK_PATTERN, re.DOTALL), 
+                       lambda m: m.group(0)[m.group(0).find('{')+1:m.group(0).rfind('}')].strip(), in_str)
+        
+        # Replace "post_operations { ... }" with just the content inside braces
+        in_str = re.sub(re.compile(POST_OPERATION_BLOCK_PATTERN, re.DOTALL), 
+                       lambda m: m.group(0)[m.group(0).find('{')+1:m.group(0).rfind('}')].strip(), in_str)
+        
         return in_str
 
     def replace_ref_with_bq_table(self, sql):
@@ -121,14 +125,12 @@ class DataformTemplater(RawTemplater):
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
         replaced_sql = self.replace_blocks(sql)
-        replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
+        # Don't process ref calls here - they're handled during slicing for individual blocks
         replaced_sql = self.replace_incremental_condition(replaced_sql)
 
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
-            (CONFIG_BLOCK_PATTERN, 'templated'),
-            (PRE_OPERATION_BLOCK_PATTERN, 'templated'),
-            (POST_OPERATION_BLOCK_PATTERN, 'templated'),
+            # Config blocks, pre_operations, and post_operations are processed in replace_blocks
             # (JS_BLOCK_PATTERN, 'templated'),
             (REF_PATTERN, 'templated'),
             (INCREMENTAL_CONDITION_PATTERN, 'templated'),
@@ -140,12 +142,12 @@ class DataformTemplater(RawTemplater):
         templated_idx = 0
         block_idx = 0
 
-        while current_idx < len(sql):
+        while current_idx < len(replaced_sql):
             next_match = None
             next_match_type = 'templated'
 
             for pattern, match_type in patterns:
-                match = re.search(pattern, sql[current_idx:])
+                match = re.search(pattern, replaced_sql[current_idx:])
                 if match:
                     match_start = current_idx + match.start()
                     if not next_match or match_start < next_match.start():
@@ -154,21 +156,21 @@ class DataformTemplater(RawTemplater):
 
             if not next_match:
                 raw_slices.append(RawFileSlice(
-                    raw=sql[current_idx:],
+                    raw=replaced_sql[current_idx:],
                     slice_type='literal',
                     source_idx=current_idx,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type='literal',
-                    source_slice=slice(current_idx, len(sql)),
-                    templated_slice=slice(templated_idx, templated_idx + len(sql) - current_idx)
+                    source_slice=slice(current_idx, len(replaced_sql)),
+                    templated_slice=slice(templated_idx, templated_idx + len(replaced_sql) - current_idx)
                 ))
                 break
 
             if next_match.start() > 0:
                 raw_slices.append(RawFileSlice(
-                    raw=sql[current_idx:next_match.start() + current_idx],
+                    raw=replaced_sql[current_idx:next_match.start() + current_idx],
                     slice_type='literal',
                     source_idx=current_idx,
                     block_idx=block_idx
@@ -211,4 +213,27 @@ class DataformTemplater(RawTemplater):
             current_idx = current_idx + next_match.end()
             block_idx += 1
 
-        return replaced_sql, raw_slices, templated_slices
+        # Build the final templated SQL from the slices
+        final_sql = ""
+        for templated_slice in templated_slices:
+            if templated_slice.slice_type == 'templated':
+                # For templated slices, we need to get the raw content and process it
+                raw_content = None
+                for raw_slice in raw_slices:
+                    if (raw_slice.source_idx == templated_slice.source_slice.start and 
+                        raw_slice.source_idx + len(raw_slice.raw) == templated_slice.source_slice.stop):
+                        raw_content = raw_slice.raw
+                        break
+                
+                if raw_content:
+                    # Process ref calls in the raw content
+                    processed_content = self.replace_ref_with_bq_table(raw_content)
+                    final_sql += processed_content
+                else:
+                    final_sql += replaced_sql[templated_slice.source_slice.start:templated_slice.source_slice.stop]
+            else:
+                # For literal slices, just add the content
+                final_sql += replaced_sql[templated_slice.source_slice.start:templated_slice.source_slice.stop]
+
+        return final_sql, raw_slices, templated_slices
+        

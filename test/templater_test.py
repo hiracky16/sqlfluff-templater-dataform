@@ -78,7 +78,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                     RETURNS FLOAT64
                     AS ((x + 4) / y);
                 }""",
-                ""
+                "CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n                    RETURNS FLOAT64\n                    AS ((x + 4) / y);"
         ),
         (
                 """post_operations {
@@ -87,7 +87,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                 TABLE ${self()}
                 TO "group:allusers@example.com", "user:otheruser@example.com"
                 }""",
-                ""
+                "GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE ${self()}\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
         ),
         (
                 """config {
@@ -106,7 +106,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                 TABLE ${self()}
                 TO "group:allusers@example.com", "user:otheruser@example.com"
                 }""",
-                "  "
+                " CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n                    RETURNS FLOAT64\n                    AS ((x + 4) / y); GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE ${self()}\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
         ),
     ]
 )
@@ -129,17 +129,15 @@ SELECT 1 AS value FROM ${ref('test')} WHERE true
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 4
-    assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.startswith("\nSELECT 1")
-    assert raw_slices[2].raw.startswith('${ref')
-    assert raw_slices[3].raw == " WHERE true\n"
+    assert len(raw_slices) == 3
+    assert raw_slices[0].raw.startswith("\nSELECT 1")
+    assert raw_slices[1].raw.startswith('${ref')
+    assert raw_slices[2].raw == " WHERE true\n"
 
-    assert len(templated_slices) == 4
-    assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "literal"
-    assert templated_slices[2].slice_type == "templated"
-    assert templated_slices[3].slice_type == "literal"
+    assert len(templated_slices) == 3
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
 
 def test_slice_sqlx_template_with_multiple_refs(templater):
     input_sqlx = """config {
@@ -157,21 +155,19 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 6
-    assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.startswith("\nSELECT *")
-    assert raw_slices[2].raw.startswith('${ref')
-    assert raw_slices[3].raw.startswith(' JOIN')
-    assert raw_slices[4].raw.startswith('${ref')
-    assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
+    assert len(raw_slices) == 5
+    assert raw_slices[0].raw.startswith("\nSELECT *")
+    assert raw_slices[1].raw.startswith('${ref')
+    assert raw_slices[2].raw.startswith(' JOIN')
+    assert raw_slices[3].raw.startswith('${ref')
+    assert raw_slices[4].raw.endswith(" ON test.id = other_table.id\n")
 
-    assert len(templated_slices) == 6
-    assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "literal"
-    assert templated_slices[2].slice_type == "templated"
-    assert templated_slices[3].slice_type == "literal"
-    assert templated_slices[4].slice_type == "templated"
-    assert templated_slices[5].slice_type == "literal"
+    assert len(templated_slices) == 5
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[3].slice_type == "templated"
+    assert templated_slices[4].slice_type == "literal"
 
 def test_slice_sqlx_template_with_no_ref(templater):
     input_sqlx = """SELECT * FROM my_table WHERE true
@@ -210,25 +206,19 @@ GROUP BY test
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 8
-    assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.startswith("\nSELECT *")
-    assert raw_slices[2].raw.startswith('${ref')
-    assert raw_slices[3].raw.startswith(' JOIN')
-    assert raw_slices[4].raw.startswith('${ref')
-    assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
-    assert raw_slices[6].raw.startswith("${when")
-    assert raw_slices[7].raw.startswith("\nGROUP BY")
+    assert len(raw_slices) == 5
+    assert raw_slices[0].raw.startswith("\nSELECT *")
+    assert raw_slices[1].raw.startswith('${ref')
+    assert raw_slices[2].raw.startswith(' JOIN')
+    assert raw_slices[3].raw.startswith('${ref')
+    assert raw_slices[4].raw.endswith("GROUP BY test\n")
 
-    assert len(templated_slices) == 8
-    assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "literal"
-    assert templated_slices[2].slice_type == "templated"
-    assert templated_slices[3].slice_type == "literal"
-    assert templated_slices[4].slice_type == "templated"
-    assert templated_slices[5].slice_type == "literal"
-    assert templated_slices[6].slice_type == "templated"
-    assert templated_slices[7].slice_type == "literal"
+    assert len(templated_slices) == 5
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[3].slice_type == "templated"
+    assert templated_slices[4].slice_type == "literal"
 
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
@@ -245,17 +235,15 @@ SELECT * FROM ${ref('test')} WHERE true
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 4
-    assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.startswith("\nSELECT *")
-    assert raw_slices[2].raw.startswith("${ref")
-    assert raw_slices[3].raw == " WHERE true\n"
+    assert len(raw_slices) == 3
+    assert raw_slices[0].raw.startswith("\nSELECT *")
+    assert raw_slices[1].raw.startswith("${ref")
+    assert raw_slices[2].raw == " WHERE true\n"
 
-    assert len(templated_slices) == 4
-    assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "literal"
-    assert templated_slices[2].slice_type == "templated"
-    assert templated_slices[3].slice_type == "literal"
+    assert len(templated_slices) == 3
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
 
 def test_process_sqlx_with_multiple_refs(templater):
     input_sqlx = """config {
@@ -273,21 +261,19 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
 
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 6
-    assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.startswith("\nSELECT *")
-    assert raw_slices[2].raw.startswith("${ref")
-    assert raw_slices[3].raw.startswith(" JOIN")
-    assert raw_slices[4].raw.startswith("${ref")
-    assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
+    assert len(raw_slices) == 5
+    assert raw_slices[0].raw.startswith("\nSELECT *")
+    assert raw_slices[1].raw.startswith("${ref")
+    assert raw_slices[2].raw.startswith(" JOIN")
+    assert raw_slices[3].raw.startswith("${ref")
+    assert raw_slices[4].raw.endswith(" ON test.id = other_table.id\n")
 
-    assert len(templated_slices) == 6
-    assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "literal"
-    assert templated_slices[2].slice_type == "templated"
-    assert templated_slices[3].slice_type == "literal"
-    assert templated_slices[4].slice_type == "templated"
-    assert templated_slices[5].slice_type == "literal"
+    assert len(templated_slices) == 5
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[3].slice_type == "templated"
+    assert templated_slices[4].slice_type == "literal"
 
 
 @mark.parametrize(
@@ -296,30 +282,20 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
         (
             "config_pre_post_ref.sqlx",
             {
-                "expected_sql": "\n\n\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
+                "expected_sql": "\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\nRETURNS FLOAT64\nAS ((x + 4) / y);\nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE ${self()}\n    TO \"group:allusers@example.com\", \"user:otheruser@example.com\"\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
                 "raw_slices": {
-                    "len": 8,
+                    "len": 3,
                     "raw_starts": [
-                        "config",
-                        "\n",
-                        "pre_operations",
-                        "\n",
-                        "post_operations",
-                        "\nSELECT *",
+                        "\nCREATE TEMP",
                         "${ref",
                         " WHERE true",
                     ]
                 },
                 "templated_slices": {
-                    "len": 8,
+                    "len": 3,
                     "templated_types": [
-                        "templated",
                         "literal",
-                        "templated",
-                        "literal",
-                        "templated",
-                        "literal",
-                        "templated",
+                        "templated", 
                         "literal",
                     ]
                 }
