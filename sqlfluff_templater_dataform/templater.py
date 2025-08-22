@@ -23,6 +23,7 @@ PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\
 POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 REF_PATTERN = r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}'
+SELF_REFERENCE_PATTERN = r'\$\{self\(\)\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)}'
 
 class UsedJSBlockError(SQLFluffSkipFile):
@@ -94,13 +95,18 @@ class DataformTemplater(RawTemplater):
         in_str = re.sub(re.compile(CONFIG_BLOCK_PATTERN, re.DOTALL), '', in_str)
         
         # Extract SQL content from pre_operations and post_operations blocks, removing the block syntax
+        def extract_and_process_block_content(match):
+            content = match.group(0)[match.group(0).find('{')+1:match.group(0).rfind('}')].strip()
+            # Also process ${self()} references in the extracted content
+            return self.replace_self_reference(content)
+        
         # Replace "pre_operations { ... }" with just the content inside braces
         in_str = re.sub(re.compile(PRE_OPERATION_BLOCK_PATTERN, re.DOTALL), 
-                       lambda m: m.group(0)[m.group(0).find('{')+1:m.group(0).rfind('}')].strip(), in_str)
+                       extract_and_process_block_content, in_str)
         
         # Replace "post_operations { ... }" with just the content inside braces
         in_str = re.sub(re.compile(POST_OPERATION_BLOCK_PATTERN, re.DOTALL), 
-                       lambda m: m.group(0)[m.group(0).find('{')+1:m.group(0).rfind('}')].strip(), in_str)
+                       extract_and_process_block_content, in_str)
         
         return in_str
 
@@ -121,6 +127,16 @@ class DataformTemplater(RawTemplater):
     def replace_incremental_condition(self, sql: str):
       pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
       return re.sub(pattern, '', sql)
+
+    def replace_self_reference(self, sql: str) -> str:
+        """Replace ${self()} with a unique, deterministic placeholder.
+        
+        Since we can't reliably determine the current table name from filename or config,
+        we use a consistent placeholder that can be identified and replaced later if needed.
+        """
+        # Replace ${self()} with a unique placeholder that includes project, dataset, and a generic table name
+        placeholder = f"`{self.project_id}.{self.dataset_id}.CURRENT_TABLE`"
+        return re.sub(r'\$\{self\(\)\}', placeholder, sql)
 
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
@@ -234,6 +250,9 @@ class DataformTemplater(RawTemplater):
             else:
                 # For literal slices, just add the content
                 final_sql += replaced_sql[templated_slice.source_slice.start:templated_slice.source_slice.stop]
+
+        # Replace any remaining ${self()} references in the final SQL
+        final_sql = self.replace_self_reference(final_sql)
 
         return final_sql, raw_slices, templated_slices
         

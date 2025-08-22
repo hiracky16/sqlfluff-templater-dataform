@@ -87,7 +87,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                 TABLE ${self()}
                 TO "group:allusers@example.com", "user:otheruser@example.com"
                 }""",
-                "GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE ${self()}\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
+                "GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE `my_project.my_dataset.CURRENT_TABLE`\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
         ),
         (
                 """config {
@@ -106,7 +106,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                 TABLE ${self()}
                 TO "group:allusers@example.com", "user:otheruser@example.com"
                 }""",
-                " CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n                    RETURNS FLOAT64\n                    AS ((x + 4) / y); GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE ${self()}\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
+                " CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n                    RETURNS FLOAT64\n                    AS ((x + 4) / y); GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE `my_project.my_dataset.CURRENT_TABLE`\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
         ),
     ]
 )
@@ -118,7 +118,64 @@ def test_replace_blocks(templater, test_block, replaced_sql):
     assert result == expected_sql
 
 
+def test_replace_self_reference(templater):
+    """Test that ${self()} references are replaced with unique placeholders."""
+    input_sql = """GRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE ${self()}
+    TO "group:allusers@example.com" """
+    
+    expected_sql = """GRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE `my_project.my_dataset.CURRENT_TABLE`
+    TO "group:allusers@example.com" """
+    
+    result = templater.replace_self_reference(input_sql)
+    assert result == expected_sql
+
+
+def test_replace_self_reference_multiple_occurrences(templater):
+    """Test that multiple ${self()} references are all replaced."""
+    input_sql = """SELECT * FROM ${self()} 
+    WHERE table_name = (SELECT name FROM ${self()})"""
+    
+    expected_sql = """SELECT * FROM `my_project.my_dataset.CURRENT_TABLE` 
+    WHERE table_name = (SELECT name FROM `my_project.my_dataset.CURRENT_TABLE`)"""
+    
+    result = templater.replace_self_reference(input_sql)
+    assert result == expected_sql
+
+
+def test_replace_self_reference_no_occurrences(templater):
+    """Test that SQL without ${self()} is unchanged."""
+    input_sql = """SELECT * FROM my_table WHERE true"""
+    
+    result = templater.replace_self_reference(input_sql)
+    assert result == input_sql
+
+
 # slice_sqlx_template のテスト
+def test_slice_sqlx_template_with_self_reference(templater):
+    """Test that ${self()} references are handled in the full slicing pipeline."""
+    input_sqlx = """config {
+    type: "table"
+}
+GRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE ${self()}
+    TO "group:allusers@example.com"
+SELECT * FROM ${ref('test')} WHERE true"""
+    
+    expected_sql = """\nGRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE `my_project.my_dataset.CURRENT_TABLE`
+    TO "group:allusers@example.com"
+SELECT * FROM `my_project.my_dataset.test` WHERE true"""
+    
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+
 def test_slice_sqlx_template_with_config_and_ref(templater):
     input_sqlx = """config {
     type: "table"
@@ -282,7 +339,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
         (
             "config_pre_post_ref.sqlx",
             {
-                "expected_sql": "\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\nRETURNS FLOAT64\nAS ((x + 4) / y);\nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE ${self()}\n    TO \"group:allusers@example.com\", \"user:otheruser@example.com\"\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
+                                    "expected_sql": "\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\nRETURNS FLOAT64\nAS ((x + 4) / y);\nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE `my_project.my_dataset.CURRENT_TABLE`\n    TO \"group:allusers@example.com\", \"user:otheruser@example.com\"\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
                 "raw_slices": {
                     "len": 3,
                     "raw_starts": [
