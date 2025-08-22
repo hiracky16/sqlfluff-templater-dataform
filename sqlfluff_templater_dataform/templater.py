@@ -134,8 +134,37 @@ class DataformTemplater(RawTemplater):
         Since we can't reliably determine the current table name from filename or config,
         we use a consistent placeholder that can be identified and replaced later if needed.
         """
-        # Replace ${self()} with a unique placeholder that includes project, dataset, and a generic table name
-        placeholder = f"`{self.project_id}.{self.dataset_id}.CURRENT_TABLE`"
+        # Generate a randomized table name using base26 cipher for uniqueness
+        import hashlib
+        
+        # Create a deterministic but random-looking table name
+        # Use a combination of project_id and dataset_id to ensure consistency per templater instance
+        seed = f"{self.project_id}_{self.dataset_id}_self_ref"
+        hash_obj = hashlib.md5(seed.encode())
+        hash_hex = hash_obj.hexdigest()
+        
+        # Convert hex to base26 (a-z) for a table-name-like identifier
+        def hex_to_base26(hex_str):
+            # Take first 8 characters of hex and convert to base26
+            num = int(hex_str[:8], 16)
+            if num == 0:
+                return 'a'
+            
+            result = ''
+            while num > 0:
+                result = chr(ord('a') + (num % 26)) + result
+                num //= 26
+            
+            # Ensure it starts with a letter and has reasonable length
+            if len(result) < 6:
+                result = result.ljust(6, 'a')
+            elif len(result) > 12:
+                result = result[:12]
+                
+            return result
+        
+        random_table_name = hex_to_base26(hash_hex)
+        placeholder = f"`{self.project_id}.{self.dataset_id}.{random_table_name}`"
         return re.sub(r'\$\{self\(\)\}', placeholder, sql)
 
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:

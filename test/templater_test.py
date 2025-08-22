@@ -87,7 +87,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                 TABLE ${self()}
                 TO "group:allusers@example.com", "user:otheruser@example.com"
                 }""",
-                "GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE `my_project.my_dataset.CURRENT_TABLE`\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
+                "GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE `my_project.my_dataset.bhuuzkr`\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
         ),
         (
                 """config {
@@ -106,7 +106,7 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
                 TABLE ${self()}
                 TO "group:allusers@example.com", "user:otheruser@example.com"
                 }""",
-                " CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n                    RETURNS FLOAT64\n                    AS ((x + 4) / y); GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE `my_project.my_dataset.CURRENT_TABLE`\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
+                " CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n                    RETURNS FLOAT64\n                    AS ((x + 4) / y); GRANT `roles/bigquery.dataViewer`\n                ON\n                TABLE `my_project.my_dataset.bhuuzkr`\n                TO \"group:allusers@example.com\", \"user:otheruser@example.com\""
         ),
     ]
 )
@@ -127,7 +127,7 @@ def test_replace_self_reference(templater):
     
     expected_sql = """GRANT `roles/bigquery.dataViewer`
     ON
-    TABLE `my_project.my_dataset.CURRENT_TABLE`
+    TABLE `my_project.my_dataset.bhuuzkr`
     TO "group:allusers@example.com" """
     
     result = templater.replace_self_reference(input_sql)
@@ -139,8 +139,8 @@ def test_replace_self_reference_multiple_occurrences(templater):
     input_sql = """SELECT * FROM ${self()} 
     WHERE table_name = (SELECT name FROM ${self()})"""
     
-    expected_sql = """SELECT * FROM `my_project.my_dataset.CURRENT_TABLE` 
-    WHERE table_name = (SELECT name FROM `my_project.my_dataset.CURRENT_TABLE`)"""
+    expected_sql = """SELECT * FROM `my_project.my_dataset.bhuuzkr` 
+    WHERE table_name = (SELECT name FROM `my_project.my_dataset.bhuuzkr`)"""
     
     result = templater.replace_self_reference(input_sql)
     assert result == expected_sql
@@ -168,7 +168,7 @@ SELECT * FROM ${ref('test')} WHERE true"""
     
     expected_sql = """\nGRANT `roles/bigquery.dataViewer`
     ON
-    TABLE `my_project.my_dataset.CURRENT_TABLE`
+    TABLE `my_project.my_dataset.bhuuzkr`
     TO "group:allusers@example.com"
 SELECT * FROM `my_project.my_dataset.test` WHERE true"""
     
@@ -339,7 +339,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
         (
             "config_pre_post_ref.sqlx",
             {
-                                    "expected_sql": "\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\nRETURNS FLOAT64\nAS ((x + 4) / y);\nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE `my_project.my_dataset.CURRENT_TABLE`\n    TO \"group:allusers@example.com\", \"user:otheruser@example.com\"\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
+                                    "expected_sql": "\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\nRETURNS FLOAT64\nAS ((x + 4) / y);\nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE `my_project.my_dataset.bhuuzkr`\n    TO \"group:allusers@example.com\", \"user:otheruser@example.com\"\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
                 "raw_slices": {
                     "len": 3,
                     "raw_starts": [
