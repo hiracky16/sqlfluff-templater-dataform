@@ -14,6 +14,10 @@ config {
     }
 }
 
+js {
+  const currentDate = new Date().toISOString().split('T')[0];
+}
+
 WITH users AS (
     SELECT
         user_id,
