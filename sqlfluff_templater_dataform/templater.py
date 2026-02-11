@@ -21,14 +21,9 @@ templater_logger = logging.getLogger("sqlfluff.templater")
 CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
-JS_BLOCK_PATTERN = r'js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
+JS_BLOCK_PATTERN = r'\s*js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 REF_PATTERN = r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)\s*}'
-
-class UsedJSBlockError(SQLFluffSkipFile):
-    """ This package does not support dataform js block """
-    """ When js block used, skip linting a file."""
-    pass
 
 class DataformTemplater(RawTemplater):
     """A templater using dataform."""
@@ -71,10 +66,6 @@ class DataformTemplater(RawTemplater):
         if in_str is None:
           return TemplatedFile(source_str='', fname=fname), []
 
-        templater_logger.info(in_str)
-        if in_str and self.has_js_block(in_str):
-            raise UsedJSBlockError("JavaScript block is not supported.")
-
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
         return TemplatedFile(
@@ -85,15 +76,12 @@ class DataformTemplater(RawTemplater):
             raw_sliced=raw_slices,
         ), []
 
-    def has_js_block(self, sql: str) -> bool:
-        pattern = re.compile(JS_BLOCK_PATTERN, re.DOTALL)
-        return bool(pattern.search(sql))
-
     def replace_blocks(self, in_str: str) -> str:
         for block_pattern in [
             CONFIG_BLOCK_PATTERN,
             PRE_OPERATION_BLOCK_PATTERN,
-            POST_OPERATION_BLOCK_PATTERN
+            POST_OPERATION_BLOCK_PATTERN,
+            JS_BLOCK_PATTERN
         ]:
             pattern = re.compile(block_pattern, re.DOTALL)
             in_str = re.sub(pattern, '', in_str)
@@ -129,7 +117,7 @@ class DataformTemplater(RawTemplater):
             (CONFIG_BLOCK_PATTERN, 'templated'),
             (PRE_OPERATION_BLOCK_PATTERN, 'templated'),
             (POST_OPERATION_BLOCK_PATTERN, 'templated'),
-            # (JS_BLOCK_PATTERN, 'templated'),
+            (JS_BLOCK_PATTERN, 'templated'),
             (REF_PATTERN, 'templated'),
             (INCREMENTAL_CONDITION_PATTERN, 'templated'),
         ]
