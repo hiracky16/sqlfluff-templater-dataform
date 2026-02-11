@@ -166,6 +166,33 @@ def test_slice_sqlx_template_with_no_ref(templater):
     assert len(templated_slices) == 1
     assert templated_slices[0].slice_type == "literal"
 
+
+def test_slice_sqlx_template_with_js_block(templater):
+    input_sqlx = """config {
+    type: "table"
+}
+js {
+    const a = 1;
+}
+SELECT 1 AS value FROM my_table WHERE true
+"""
+    expected_sql = """\nSELECT 1 AS value FROM my_table WHERE true
+"""
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    assert len(raw_slices) == 3
+    assert raw_slices[0].raw.startswith("config")
+    assert raw_slices[1].raw.strip().startswith("js")
+    assert raw_slices[2].raw.startswith("\nSELECT 1")
+
+    assert len(templated_slices) == 3
+    assert templated_slices[0].slice_type == "templated"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+
+
+
 def test_slice_sqlx_template_with_incremental_table(templater):
     input_sqlx = """config {
     type: "incremantal",
