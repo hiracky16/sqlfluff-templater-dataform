@@ -351,3 +351,15 @@ def test_process_sqlx_with_post_pre_operations_config_and_ref(templater, test_in
     for i, expected_templated_types in enumerate(expected["templated_slices"]["templated_types"]):
         assert templated_slices[i].slice_type == expected_templated_types
 
+def test_slice_sqlx_template_with_js_function_call(templater):
+    input_sqlx = '''js {
+  const { my_custom_function } = require("includes/my_includes");
+}
+CREATE OR REPLACE FUNCTION ${my_custom_function("standard_boolean_default")}(input BOOL, default_Value BOOL)
+'''
+    expected_sql = '''
+CREATE OR REPLACE FUNCTION (input BOOL, default_Value BOOL)
+'''
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql.strip() == expected_sql.strip()
+
