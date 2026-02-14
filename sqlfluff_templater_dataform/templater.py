@@ -106,11 +106,16 @@ class DataformTemplater(RawTemplater):
       pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
       return re.sub(pattern, '', sql)
 
+    def replace_js_expressions(self, sql: str) -> str:
+        pattern = re.compile(r'\$\{[^\}]*\}')
+        return re.sub(pattern, '', sql)
+
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
         replaced_sql = self.replace_blocks(sql)
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
         replaced_sql = self.replace_incremental_condition(replaced_sql)
+        replaced_sql = self.replace_js_expressions(replaced_sql)
 
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
@@ -120,6 +125,7 @@ class DataformTemplater(RawTemplater):
             (JS_BLOCK_PATTERN, 'templated'),
             (REF_PATTERN, 'templated'),
             (INCREMENTAL_CONDITION_PATTERN, 'templated'),
+            (r'\$\{[^\}]*\}', 'templated'), # Add this line
         ]
 
         raw_slices = []

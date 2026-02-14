@@ -1,0 +1,27 @@
+config {
+  type: "table"
+}
+js {
+  const multiply = (a, b) => a * b;
+  const current_date_str = new Date().toISOString().slice(0, 10);
+}
+
+CREATE TEMPORARY FUNCTION MyUDF(x INT64, y INT64) RETURNS INT64 AS (
+  ${multiply}(x, y)
+);
+
+WITH source_data AS (
+  SELECT
+    id,
+    value
+  FROM ${ref("source_table")}
+),
+processed_data AS (
+  SELECT
+    id,
+    MyUDF(value, 2) AS processed_value,
+    '${current_date_str}' AS report_date
+  FROM source_data
+)
+SELECT *
+FROM processed_data

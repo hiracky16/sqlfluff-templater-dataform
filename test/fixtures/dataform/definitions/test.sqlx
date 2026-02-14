@@ -15,7 +15,7 @@ config {
 }
 
 js {
-  const currentDate = new Date().toISOString().split('T')[0];
+  const { currentDate } = new Date().toISOString().split('T')[0];
 }
 
 WITH users AS (
@@ -43,4 +43,7 @@ SELECT
 FROM users LEFT OUTER JOIN user_orders ON users.user_id = user_orders.user_id
 WHERE TRUE
 ${when(incremental(), `WHERE users.updated_at > (SELECT MAX(updated_at) FROM ${self()})`)}
-GROUP BY user_id, name, age, order_date
+GROUP
+BY
+    user_id, name,
+    age, order_date
