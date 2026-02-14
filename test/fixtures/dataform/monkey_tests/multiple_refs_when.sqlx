@@ -1,0 +1,9 @@
+config {
+  type: "incremental"
+}
+SELECT
+  t1.id,
+  t2.name
+FROM ${ref("table1")} AS t1
+JOIN ${ref("dataset2", "table2")} AS t2 ON t1.id = t2.id
+${when(incremental(), `WHERE t1.created_at > (SELECT MAX(created_at) FROM ${self()})`)}
