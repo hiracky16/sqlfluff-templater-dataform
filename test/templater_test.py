@@ -358,7 +358,7 @@ def test_slice_sqlx_template_with_js_function_call(templater):
 CREATE OR REPLACE FUNCTION ${my_custom_function("standard_boolean_default")}(input BOOL, default_Value BOOL)
 '''
     expected_sql = '''
-CREATE OR REPLACE FUNCTION (input BOOL, default_Value BOOL)
+CREATE OR REPLACE FUNCTION 'js_expression'(input BOOL, default_Value BOOL)
 '''
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql.strip() == expected_sql.strip()
