@@ -47,8 +47,13 @@ docker compose exec app sqlfluff lint test/fixture/dataform
 ## Release
 
 リリースプロセスには、Gitタグの作成とプッシュ、そしてPyPIへのパッケージのビルドとアップロードが含まれます。
+main ブランチで作業を行うこと。
 
-### 1. Tagging
+### 1. Increment version
+pyproject.toml のバージョンを一つ上げる。
+基本的にパッチバージョンを上げる。
+
+### 2. Tagging
 
 ```sh
 $ git checkout main && git pull origin main
@@ -57,9 +62,10 @@ $ git tag v0.1.7 # increment latest version
 $ git push origin v0.1.7
 ```
 
-### 2. Build and Upload
+### 3. Build and Upload
 
-プロジェクトのルートにある`Makefile`には、パッケージのビルドとアップロードのコマンドが含まれています。
+以下のコマンドで実施可能
+※ Tagをpushした段階でGitHub Actionsが実行してくれるので不要
 
 ```sh
 # パッケージのビルド
@@ -68,3 +74,6 @@ python -m build
 # PyPIへのアップロード
 python -m twine upload dist/*
 ```
+
+### 4. Create release note
+GitHub 上でリリースノートを作成する。
