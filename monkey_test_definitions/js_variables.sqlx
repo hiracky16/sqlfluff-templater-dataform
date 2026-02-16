@@ -1,0 +1,10 @@
+config {
+  type: "view"
+}
+js {
+  const my_string = "hello_world";
+  const my_number = 123;
+}
+SELECT
+  ${my_string} AS my_text,
+  ${my_number} AS my_num
