@@ -363,3 +363,23 @@ CREATE OR REPLACE FUNCTION js_expression(input BOOL, default_Value BOOL)
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql.strip() == expected_sql.strip()
 
+def test_slice_sqlx_template_with_mixed_ordering(templater):
+    """Test ensuring patterns appearing earlier in text but later in priority list are captured correctly."""
+    input_sqlx = """config { type: "view" }
+SELECT ${my_var}, ${ref('my_table')}
+"""
+    expected_sql = '\nSELECT js_expression, `my_project.my_dataset.my_table`\n'
+
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    assert len(raw_slices) == 6
+    assert raw_slices[0].slice_type == "templated"  # config
+    assert raw_slices[1].slice_type == "literal"    # SELECT
+    assert raw_slices[2].slice_type == "templated"  # ${my_var}
+    assert raw_slices[2].raw == "${my_var}"
+    assert raw_slices[3].slice_type == "literal"    # ,
+    assert raw_slices[4].slice_type == "templated"  # ${ref...}
+    assert raw_slices[5].slice_type == "literal"    # \n
+
+
