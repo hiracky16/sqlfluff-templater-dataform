@@ -16,5 +16,4 @@ post_operations {
     TABLE ${self()}
     TO "group:allusers@example.com", "user:otheruser@example.com"
 }
-SELECT * FROM ${ref('test')}
-WHERE true
+SELECT * FROM ${ref('test')} WHERE true
