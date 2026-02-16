@@ -110,7 +110,7 @@ class DataformTemplater(RawTemplater):
     def replace_js_expressions(self, sql: str) -> str:
         pattern = re.compile(JS_EXPRESSION_PATTERN_IN_SQL)
         def js_to_placeholder(match):
-            return "'js_expression'"
+            return "js_expression"
         return re.sub(pattern, js_to_placeholder, sql)
 
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
@@ -145,7 +145,7 @@ class DataformTemplater(RawTemplater):
                 match = re.search(pattern, sql[current_idx:])
                 if match:
                     match_start = current_idx + match.start()
-                    if not next_match or match_start < next_match.start():
+                    if not next_match or match_start < (current_idx + next_match.start()):
                         next_match = match
                         next_match_type = match_type
 
