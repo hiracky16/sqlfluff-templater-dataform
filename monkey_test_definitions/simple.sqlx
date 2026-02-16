@@ -1,0 +1,6 @@
+config {
+  type: "table"
+}
+SELECT
+  1 AS column_1,
+  2 AS column_2

@@ -1,8 +1,8 @@
 [sqlfluff]
+exclude_rules = LT13
 templater = dataform
 dialect = bigquery
 sql_file_exts = .sqlx
-exclude_rules = LT13
 
 [sqlfluff:templater:dataform]
 project_id = project_id
@@ -11,3 +11,7 @@ dataset_id = dataform
 [sqlfluff:rules:capitalisation.keywords]
 # 予約語の大文字小文字
 capitalisation_policy = upper
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 2
