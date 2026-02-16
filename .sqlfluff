@@ -11,3 +11,7 @@ dataset_id = dataform
 [sqlfluff:rules:capitalisation.keywords]
 # 予約語の大文字小文字
 capitalisation_policy = upper
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 2
