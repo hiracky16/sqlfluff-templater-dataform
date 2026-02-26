@@ -3,7 +3,6 @@ import os
 import os.path
 import re
 from typing import (
-    Iterator,
     List,
     Optional,
     Tuple,
@@ -23,7 +22,7 @@ PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\
 POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'\s*js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{[^\}]*\}'
-REF_PATTERN = r'\$\{\s*ref\(\s*[\'"]([^\'"]+)[\'"](?:\s*,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}'
+REF_PATTERN = r'\$\{\s*ref\(((?:[^(){}]|\{[^{}]*\})*)\)\s*\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)\s*}'
 
 class DataformTemplater(RawTemplater):
@@ -93,13 +92,82 @@ class DataformTemplater(RawTemplater):
         """ A regular expression to handle ref function calls that include spaces. """
         pattern = re.compile(REF_PATTERN)
         def ref_to_table(match):
-            if match.group(2):
-                dataset = match.group(1)
-                model_name = match.group(2)
+            # Extract the content inside ref() using the captured group
+            ref_content = match.group(1)  # Use the captured group instead of manual extraction
+            
+            # Check if it's object notation: { name: "name", schema: "schema", database: "database" }
+            if ref_content.strip().startswith('{') and ref_content.strip().endswith('}'):
+                # Parse object notation with simpler string parsing
+                obj_content = ref_content.strip()[1:-1]  # Remove { and }
+                parts = {}
+                
+                # Split by commas and parse each key-value pair
+                for pair in obj_content.split(','):
+                    pair = pair.strip()
+                    if ':' in pair:
+                        # Find the first colon and split
+                        colon_pos = pair.find(':')
+                        key = pair[:colon_pos].strip()
+                        value = pair[colon_pos + 1:].strip()
+                        # Remove quotes if present
+                        if (value.startswith('"') and value.endswith('"')) or \
+                           (value.startswith("'") and value.endswith("'")):
+                            value = value[1:-1]
+                        parts[key] = value
+                
+                # Debug: if parsing failed, return original
+                if not parts:
+                    return match.group(0)
+                
+                # Extract values with fallbacks
+                project_id = parts.get('database', self.project_id)
+                dataset = parts.get('schema', self.dataset_id)
+                model_name = parts.get('name', '')
+                
             else:
-                dataset = self.dataset_id
-                model_name = match.group(1)
-            return f"`{self.project_id}.{dataset}.{model_name}`"
+                # Handle variadic arguments: "database", "schema", "name" or "schema", "name" or "name"
+                # Split by commas, trim whitespace, and remove quotes
+                parts = [part.strip().strip('"\'') for part in ref_content.split(',')]
+                
+                if len(parts) == 3:
+                    # 3 elements: database, schema, name
+                    project_id = parts[0]
+                    dataset = parts[1]
+                    model_name = parts[2]
+                elif len(parts) == 2:
+                    # 2 elements: schema, name
+                    dataset = parts[0]
+                    model_name = parts[1]
+                    project_id = self.project_id
+                else:
+                    # 1 element: name only
+                    model_name = parts[0]
+                    dataset = self.dataset_id
+                    project_id = self.project_id
+            
+            # Ensure we have a valid model_name
+            if not model_name:
+                return match.group(0)  # Return original if no valid name found
+            
+            # Sanitize identifiers to ensure they're valid for BigQuery
+            # BigQuery identifiers can contain letters, numbers, and underscores
+            # They must start with a letter or underscore
+            def sanitize_identifier(identifier):
+                if not identifier:
+                    return identifier
+                # Replace invalid characters with underscores
+                sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', str(identifier))
+                # Ensure it starts with a letter or underscore
+                if sanitized and sanitized[0].isdigit():
+                    sanitized = '_' + sanitized
+                return sanitized
+            
+            project_id = sanitize_identifier(project_id)
+            dataset = sanitize_identifier(dataset)
+            model_name = sanitize_identifier(model_name)
+                
+            result = f"`{project_id}.{dataset}.{model_name}`"
+            return result
 
         return re.sub(pattern, ref_to_table, sql)
 
