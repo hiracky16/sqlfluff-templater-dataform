@@ -128,23 +128,38 @@ def test_slice_sqlx_template_with_multiple_refs(templater):
         "value:: "value"
     }
 }
-SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table.id
+SELECT * FROM ${ref('test')}
+JOIN ${ref('at')} ON test.id = at.id
+JOIN ${ref('db', 'tb')} ON test.id = tb.id
+JOIN ${ref('pc', 'dc', 'tc')} ON test.id = tc.id
+JOIN ${ref({ name: 'at2' })} ON test.id = at2.id
+JOIN ${ref({ schema: 'db2', name: 'tb2' })} ON test.id = tb2.id
+JOIN ${ref({ database: constants.PROJECT_ID, schema: 'dc2', name: 'tc2' })} ON test.id = tc2.id
 """
-    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test` JOIN `my_project.my_dataset.other_table` ON test.id = other_table.id\n"
+    expected_sql = "".join(
+            "\n"
+            "SELECT * FROM `my_project.my_dataset.test`\n"
+            "JOIN `my_project.my_dataset.at` ON test.id = at.id\n"
+            "JOIN `my_project.db.tb` ON test.id = tb.id\n"
+            "JOIN `pc.dc.tc` ON test.id = tc.id\n"
+            "JOIN `my_project.my_dataset.at2` ON test.id = at2.id\n"
+            "JOIN `my_project.db2.tb2` ON test.id = tb2.id\n"
+            "JOIN `constants_PROJECT_ID.dc2.tc2` ON test.id = tc2.id\n"
+            )
 
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
 
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 6
+    assert len(raw_slices) == 16
     assert raw_slices[0].raw.startswith("config")
     assert raw_slices[1].raw.startswith("\nSELECT *")
     assert raw_slices[2].raw.startswith('${ref')
-    assert raw_slices[3].raw.startswith(' JOIN')
+    assert raw_slices[3].raw.startswith('\nJOIN')
     assert raw_slices[4].raw.startswith('${ref')
-    assert raw_slices[5].raw.endswith(" ON test.id = other_table.id\n")
+    assert raw_slices[5].raw.endswith("ON test.id = at.id\nJOIN ")
 
-    assert len(templated_slices) == 6
+    assert len(templated_slices) == 16
     assert templated_slices[0].slice_type == "templated"
     assert templated_slices[1].slice_type == "literal"
     assert templated_slices[2].slice_type == "templated"
