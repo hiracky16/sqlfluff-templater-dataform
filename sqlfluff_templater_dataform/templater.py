@@ -42,17 +42,23 @@ class DataformTemplater(RawTemplater):
         self._sequential_fails = 0
         super().__init__(**kwargs)
 
+    def _setup_config(self, config: Optional["FluffConfig"] = None):
+        """Set up configuration for the templater."""
+        if config:
+            self.sqlfluff_config = config
+            
+        if self.sqlfluff_config:
+            self.project_id = self.sqlfluff_config.get(
+                "project_id", section=(self.templater_selector, self.name)
+            )
+            self.dataset_id = self.sqlfluff_config.get(
+                "dataset_id", section=(self.templater_selector, self.name)
+            )
+
     def sequence_files(
         self, fnames: List[str], config=None, formatter=None
     ) -> List[str]:
-        self.sqlfluff_config = config
-        # NOTE: The sqlfluff_config will be introduced at this stage, so the default project_id and dataset_id will be set.
-        self.project_id = self.sqlfluff_config.get(
-            "project_id", section=(self.templater_selector, self.name)
-        )
-        self.dataset_id = self.sqlfluff_config.get(
-            "dataset_id", section=(self.templater_selector, self.name)
-        )
+        self._setup_config(config)
         return fnames
 
     @large_file_check
@@ -67,14 +73,7 @@ class DataformTemplater(RawTemplater):
         if in_str is None:
           return TemplatedFile(source_str='', fname=fname), []
 
-        if config:
-            self.sqlfluff_config = config
-            self.project_id = self.sqlfluff_config.get(
-                "project_id", section=(self.templater_selector, self.name)
-            )
-            self.dataset_id = self.sqlfluff_config.get(
-                "dataset_id", section=(self.templater_selector, self.name)
-            )
+        self._setup_config(config)
 
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
