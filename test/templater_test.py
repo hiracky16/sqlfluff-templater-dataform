@@ -33,6 +33,12 @@ def test_replace_ref_with_bq_table_multiple_refs(templater):
     result = templater.replace_ref_with_bq_table(input_sql)
     assert result == expected_sql
 
+def test_replace_self_with_bq_table(templater):
+    input_sql = "SELECT * FROM ${self()}"
+    expected_sql = "SELECT * FROM `my_project.my_dataset.self`"
+    result = templater.replace_self_with_bq_table(input_sql)
+    assert result == expected_sql
+
 
 @mark.parametrize(
     "test_block, replaced_sql",
@@ -396,5 +402,25 @@ SELECT ${my_var}, ${ref('my_table')}
     assert raw_slices[3].slice_type == "literal"    # ,
     assert raw_slices[4].slice_type == "templated"  # ${ref...}
     assert raw_slices[5].slice_type == "literal"    # \n
+
+
+def test_slice_sqlx_template_with_self_and_js_expression(templater):
+    """Test ensuring both ${self()} and regular JS expressions are handled in the same file."""
+    input_sqlx = """config { type: "table" }
+SELECT ${column_name} FROM ${self()}
+"""
+    expected_sql = '\nSELECT js_expression FROM `my_project.my_dataset.self`\n'
+
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Slices: config(0), \nSELECT (1), ${column_name}(2),  FROM (3), ${self()}(4), \n(5)
+    assert len(raw_slices) == 6
+    assert raw_slices[0].raw.startswith("config")
+    assert raw_slices[2].raw == "${column_name}"
+    assert raw_slices[4].raw == "${self()}"
+
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[4].slice_type == "templated"
 
 

@@ -23,6 +23,7 @@ POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]
 JS_BLOCK_PATTERN = r'\s*js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{[^\}]*\}'
 REF_PATTERN = r'\$\{\s*ref\(((?:[^(){}]|\{[^{}]*\})*)\)\s*\}'
+SELF_PATTERN = r'\$\{\s*self\(\s*\)\s*\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)\s*}'
 
 class DataformTemplater(RawTemplater):
@@ -41,17 +42,23 @@ class DataformTemplater(RawTemplater):
         self._sequential_fails = 0
         super().__init__(**kwargs)
 
+    def _setup_config(self, config: Optional["FluffConfig"] = None):
+        """Set up configuration for the templater."""
+        if config:
+            self.sqlfluff_config = config
+            
+        if self.sqlfluff_config:
+            self.project_id = self.sqlfluff_config.get(
+                "project_id", section=(self.templater_selector, self.name)
+            )
+            self.dataset_id = self.sqlfluff_config.get(
+                "dataset_id", section=(self.templater_selector, self.name)
+            )
+
     def sequence_files(
         self, fnames: List[str], config=None, formatter=None
     ) -> List[str]:
-        self.sqlfluff_config = config
-        # NOTE: The sqlfluff_config will be introduced at this stage, so the default project_id and dataset_id will be set.
-        self.project_id = self.sqlfluff_config.get_section(
-            (self.templater_selector, self.name, "project_id")
-        )
-        self.dataset_id = self.sqlfluff_config.get_section(
-            (self.templater_selector, self.name, "dataset_id")
-        )
+        self._setup_config(config)
         return fnames
 
     @large_file_check
@@ -65,6 +72,8 @@ class DataformTemplater(RawTemplater):
     ):
         if in_str is None:
           return TemplatedFile(source_str='', fname=fname), []
+
+        self._setup_config(config)
 
         templated_sql, raw_slices, templated_slices = self.slice_sqlx_template(in_str)
 
@@ -171,6 +180,14 @@ class DataformTemplater(RawTemplater):
 
         return re.sub(pattern, ref_to_table, sql)
 
+    def replace_self_with_bq_table(self, sql):
+        """ A regular expression to handle self function calls. """
+        pattern = re.compile(SELF_PATTERN)
+        def self_to_table(match):
+            return f"`{self.project_id}.{self.dataset_id}.self`"
+
+        return re.sub(pattern, self_to_table, sql)
+
     def replace_incremental_condition(self, sql: str):
       pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
       return re.sub(pattern, '', sql)
@@ -184,6 +201,7 @@ class DataformTemplater(RawTemplater):
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
         replaced_sql = self.replace_blocks(sql)
+        replaced_sql = self.replace_self_with_bq_table(replaced_sql)
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
         replaced_sql = self.replace_incremental_condition(replaced_sql)
         replaced_sql = self.replace_js_expressions(replaced_sql)
@@ -195,6 +213,7 @@ class DataformTemplater(RawTemplater):
             (POST_OPERATION_BLOCK_PATTERN, 'templated'),
             (JS_BLOCK_PATTERN, 'templated'),
             (REF_PATTERN, 'templated'),
+            (SELF_PATTERN, 'templated'),
             (INCREMENTAL_CONDITION_PATTERN, 'templated'),
             (JS_EXPRESSION_PATTERN_IN_SQL, 'templated'), # Add this line
         ]
@@ -260,6 +279,20 @@ class DataformTemplater(RawTemplater):
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
+            elif next_match_type == 'templated' and r"self(" in next_match.group(0):
+                self_replaced = self.replace_self_with_bq_table(next_match.group(0))
+                raw_slices.append(RawFileSlice(
+                    raw=next_match.group(0),
+                    slice_type='templated',
+                    source_idx=current_idx + next_match.start(),
+                    block_idx=block_idx
+                ))
+                templated_slices.append(TemplatedFileSlice(
+                    slice_type=next_match_type,
+                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    templated_slice=slice(templated_idx, templated_idx + len(self_replaced))
+                ))
+                templated_idx += len(self_replaced)
             elif next_match_type == 'templated' and next_match.group(0).startswith('${') and "when(" not in next_match.group(0):
                 js_replaced = self.replace_js_expressions(next_match.group(0))
                 raw_slices.append(RawFileSlice(
