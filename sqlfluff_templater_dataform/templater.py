@@ -408,7 +408,7 @@ class DataformTemplater(RawTemplater):
 
             match_raw = sql[next_match_start:next_match_end]
 
-            if next_match_type == 'templated' and r"ref(" in match_raw:
+            if next_match_type == 'templated' and match_raw.startswith('${') and 'ref(' in match_raw:
                 ref_replaced = self.replace_ref_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
@@ -422,7 +422,7 @@ class DataformTemplater(RawTemplater):
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
-            elif next_match_type == 'templated' and r"self(" in match_raw:
+            elif next_match_type == 'templated' and match_raw.startswith('${') and 'self(' in match_raw:
                 self_replaced = self.replace_self_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
@@ -451,6 +451,7 @@ class DataformTemplater(RawTemplater):
                 ))
                 templated_idx += len(js_replaced)
             else:
+                # This is for blocks (config, pre_operations, post_operations, js)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
                     slice_type=next_match_type,

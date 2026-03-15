@@ -1,0 +1,95 @@
+config {
+    type: "table",
+    schema: "analytics__customer_data",
+    name: "customer_summary",
+    columns: {
+        customer_id: "customer_id in source",
+        customer_name: "customer_name in source",
+        customer_type: "customer_type in source",
+        region: "region in source",
+        signup_date: "signup_date in source",
+        status: "status in source",
+        total_orders: "total_orders in source",
+        last_order_date: "last_order_date in source"
+    },
+    description: "Customer summary data",
+    assertions: {
+        nonNull: ["customer_id"],
+        uniqueKey: ["customer_id"]
+    },
+    bigquery: {
+        labels: {
+            domain: "customer",
+            data_classification: "internal"
+        }
+    }
+}
+
+WITH
+  -- CTE: Join customer type labels
+  customer_type_labels AS (
+  SELECT
+    t.type_code AS type_value,
+    t.type_description AS type_label
+  FROM
+    ${
+        ref({
+            name: "customer_types",
+            schema: "staging__reference_data"
+        })
+    } AS t
+  WHERE
+    ${helper_functions.activeFilter("t")}),
+  -- CTE: Join region labels
+  region_labels AS (
+  SELECT
+    r.region_code AS region_value,
+    r.region_name AS region_label
+  FROM
+    ${
+        ref({
+            name: "regions",
+            schema: "staging__reference_data"
+        })
+    } AS r
+  WHERE
+    r.is_active = true
+    AND ${helper_functions.activeFilter("r")})
+SELECT
+  CAST(c.customer_id AS STRING) AS customer_id,
+  CAST(c.customer_name AS STRING) AS customer_name,
+  CAST(c.customer_type AS STRING) AS customer_type,
+  c.region AS region,
+  CAST(c.signup_date AS DATE) AS signup_date,
+  CAST(c.status AS STRING) AS status,
+  CAST(c.total_orders AS INT64) AS total_orders,
+  CAST(c.last_order_date AS DATE) AS last_order_date
+FROM
+  ${
+      ref({
+          name: "customer_base",
+          schema: "staging__customer_data"
+      })
+  }
+  AS c
+LEFT JOIN
+  customer_type_labels AS ctl
+ON
+  c.customer_type = ctl.type_value
+LEFT JOIN
+  region_labels AS rl
+ON
+  c.region = rl.region_value
+WHERE ${helper_functions.activeFilter("c")}
+
+post_operations {
+  ALTER TABLE
+    ${self()}
+  DROP PRIMARY KEY
+  IF EXISTS;
+  ALTER TABLE
+    ${self()}
+  ADD PRIMARY KEY
+    (customer_id) NOT ENFORCED
+    ;
+}
