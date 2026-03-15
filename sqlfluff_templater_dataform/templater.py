@@ -27,7 +27,34 @@ SELF_PATTERN = r'\$\{\s*self\(\s*\)\s*\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)\s*}'
 
 class DataformTemplater(RawTemplater):
-    """A templater using dataform."""
+    """A templater for Dataform SQLX files.
+
+    This templater processes Dataform .sqlx files by:
+
+    1. Removing Dataform-specific blocks (config, pre_operations, post_operations, js)
+    2. Replacing Dataform expressions (${ref()}, ${self()}) with BigQuery table references
+    3. Handling incremental conditions and JavaScript expressions in SQL
+
+    Block Handling:
+    Dataform blocks can contain deeply nested braces in JavaScript code. The templater
+    uses a brace-counting algorithm to correctly identify block boundaries regardless
+    of nesting depth, ensuring proper removal of blocks even when they contain complex
+    JavaScript with multiple levels of nested functions, conditionals, or objects.
+
+    For example, this post_operations block with deep nesting is handled correctly:
+        post_operations {
+          if (condition) {
+            const result = ${self()};
+            if (result) {
+              console.log({ nested: { object: true } });
+            }
+          }
+        }
+
+    The brace-counting approach ensures that the entire block is identified and removed,
+    preventing slicing errors that could occur with regex-based approaches limited to
+    fixed nesting depths.
+    """
 
     name = "dataform"
     sequential_fail_limit = 3
@@ -86,6 +113,29 @@ class DataformTemplater(RawTemplater):
         ), []
 
     def replace_blocks(self, in_str: str) -> str:
+        """Remove all Dataform blocks from the SQL string.
+
+        This method identifies and removes config, pre_operations, post_operations,
+        and js blocks from the input string. It uses a brace-counting approach to
+        handle blocks with arbitrary nesting depth, ensuring that blocks containing
+        complex JavaScript code with deeply nested braces are correctly identified
+        and removed in their entirety.
+
+        The algorithm:
+        1. Search for block start patterns (keyword followed by {)
+        2. Use find_block_end() to locate the matching closing brace
+        3. Remove the entire block (including nested content)
+        4. Repeat until no more blocks are found
+
+        This approach is robust against JavaScript code with unlimited nesting levels,
+        unlike regex-based methods that are limited to fixed recursion depths.
+
+        Args:
+            in_str: The input SQLX string containing Dataform blocks
+
+        Returns:
+            The input string with all Dataform blocks removed
+        """
         block_keywords = ['config', 'pre_operations', 'post_operations', 'js']
         for keyword in block_keywords:
             pattern = rf'{re.escape(keyword)}\s*\{{'
@@ -102,7 +152,28 @@ class DataformTemplater(RawTemplater):
         return in_str
 
     def find_block_end(self, sql: str, start: int) -> int:
-        """Find the end of a block starting with { at position start."""
+        """Find the end of a block starting with { at position start.
+
+        This method implements a brace-counting algorithm to find the matching
+        closing brace for a block that starts with an opening brace at the given
+        position. It correctly handles arbitrary nesting levels by maintaining
+        a counter that increments for each '{' and decrements for each '}'.
+
+        The algorithm ensures that nested blocks are properly traversed, making
+        it robust for complex JavaScript code with deeply nested structures like:
+        - Nested function calls
+        - Conditional statements within conditionals
+        - Object literals with nested objects
+        - Array literals with complex expressions
+
+        Args:
+            sql: The SQL string to search in
+            start: The position of the opening brace '{' that starts the block
+
+        Returns:
+            The position after the matching closing brace '}', or -1 if no
+            matching brace is found (malformed input)
+        """
         brace_count = 0
         i = start
         while i < len(sql):
@@ -217,7 +288,33 @@ class DataformTemplater(RawTemplater):
         return re.sub(pattern, js_to_placeholder, sql)
 
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
-        """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
+        """Slice SQLX content into raw and templated components.
+
+        This method processes the input SQLX string and creates corresponding slices
+        that map between the original source and the templated SQL. It handles:
+
+        1. Dataform blocks (config, pre_operations, post_operations, js) - marked as 'templated'
+        2. Dataform expressions (${ref()}, ${self()}, ${when()}) - replaced and marked as 'templated'
+        3. JavaScript expressions in SQL (${...}) - replaced with placeholders
+        4. Literal SQL content - preserved as-is
+
+        The slicing ensures that sqlfluff can map formatting changes back to the
+        original source file. For blocks with deeply nested braces, the brace-counting
+        algorithm in find_block_end() ensures accurate block boundary detection.
+
+        The method processes patterns in order of specificity, ensuring that nested
+        expressions within blocks are handled correctly. Block detection uses
+        brace-counting rather than regex recursion to support unlimited nesting depths.
+
+        Args:
+            sql: The raw SQLX string to slice
+
+        Returns:
+            A tuple of (templated_sql, raw_slices, templated_slices) where:
+            - templated_sql: The SQL with all Dataform elements processed/replaced
+            - raw_slices: List of RawFileSlice objects representing source segments
+            - templated_slices: List of TemplatedFileSlice objects for mapping
+        """
         replaced_sql = self.replace_blocks(sql)
         replaced_sql = self.replace_self_with_bq_table(replaced_sql)
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
