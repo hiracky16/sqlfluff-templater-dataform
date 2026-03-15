@@ -197,20 +197,22 @@ js {
 }
 SELECT 1 AS value FROM my_table WHERE true
 """
-    expected_sql = """\nSELECT 1 AS value FROM my_table WHERE true
+    expected_sql = """\n\nSELECT 1 AS value FROM my_table WHERE true
 """
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 3
+    assert len(raw_slices) == 4
     assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.strip().startswith("js")
-    assert raw_slices[2].raw.startswith("\nSELECT 1")
+    assert raw_slices[1].raw == "\n"
+    assert raw_slices[2].raw.strip().startswith("js")
+    assert raw_slices[3].raw.startswith("\nSELECT 1")
 
-    assert len(templated_slices) == 3
+    assert len(templated_slices) == 4
     assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "templated"
-    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[1].slice_type == "literal"
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[3].slice_type == "literal"
 
 
 

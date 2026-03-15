@@ -86,16 +86,34 @@ class DataformTemplater(RawTemplater):
         ), []
 
     def replace_blocks(self, in_str: str) -> str:
-        for block_pattern in [
-            CONFIG_BLOCK_PATTERN,
-            PRE_OPERATION_BLOCK_PATTERN,
-            POST_OPERATION_BLOCK_PATTERN,
-            JS_BLOCK_PATTERN
-        ]:
-            pattern = re.compile(block_pattern, re.DOTALL)
-            in_str = re.sub(pattern, '', in_str)
-
+        block_keywords = ['config', 'pre_operations', 'post_operations', 'js']
+        for keyword in block_keywords:
+            pattern = rf'{re.escape(keyword)}\s*\{{'
+            while True:
+                match = re.search(pattern, in_str)
+                if not match:
+                    break
+                start = match.end() - 1  # position of {
+                end = self.find_block_end(in_str, start)
+                if end != -1:
+                    in_str = in_str[:match.start()] + in_str[end:]
+                else:
+                    break  # invalid, stop
         return in_str
+
+    def find_block_end(self, sql: str, start: int) -> int:
+        """Find the end of a block starting with { at position start."""
+        brace_count = 0
+        i = start
+        while i < len(sql):
+            if sql[i] == '{':
+                brace_count += 1
+            elif sql[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return i + 1  # include the }
+            i += 1
+        return -1  # not found
 
     def replace_ref_with_bq_table(self, sql):
         """ A regular expression to handle ref function calls that include spaces. """
@@ -206,6 +224,9 @@ class DataformTemplater(RawTemplater):
         replaced_sql = self.replace_incremental_condition(replaced_sql)
         replaced_sql = self.replace_js_expressions(replaced_sql)
 
+        # Block keywords that start blocks
+        block_keywords = ['config', 'pre_operations', 'post_operations', 'js']
+
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
             (CONFIG_BLOCK_PATTERN, 'templated'),
@@ -227,14 +248,37 @@ class DataformTemplater(RawTemplater):
         while current_idx < len(sql):
             next_match = None
             next_match_type = 'templated'
+            next_match_start = None
+            next_match_end = None
 
             for pattern, match_type in patterns:
-                match = re.search(pattern, sql[current_idx:])
-                if match:
-                    match_start = current_idx + match.start()
-                    if not next_match or match_start < (current_idx + next_match.start()):
-                        next_match = match
-                        next_match_type = match_type
+                if pattern in [CONFIG_BLOCK_PATTERN, PRE_OPERATION_BLOCK_PATTERN, POST_OPERATION_BLOCK_PATTERN, JS_BLOCK_PATTERN]:
+                    # Special handling for blocks: find start, then find matching }
+                    start_pattern = r'(config|pre_operations|post_operations|js)\s*\{'
+                    match = re.search(start_pattern, sql[current_idx:])
+                    if match and match.group(1) in block_keywords:
+                        match_start = current_idx + match.start()
+                        brace_start = current_idx + match.end() - 1  # position of {
+                        end = self.find_block_end(sql, brace_start)
+                        if end != -1:
+                            match_end = end
+                        else:
+                            continue  # invalid block, skip
+                    else:
+                        continue
+                else:
+                    match = re.search(pattern, sql[current_idx:])
+                    if match:
+                        match_start = current_idx + match.start()
+                        match_end = current_idx + match.end()
+                    else:
+                        continue
+
+                if not next_match or match_start < next_match_start:
+                    next_match = match
+                    next_match_type = match_type
+                    next_match_start = match_start
+                    next_match_end = match_end
 
             if not next_match:
                 raw_slices.append(RawFileSlice(
@@ -250,77 +294,79 @@ class DataformTemplater(RawTemplater):
                 ))
                 break
 
-            if next_match.start() > 0:
+            if next_match_start > current_idx:
                 raw_slices.append(RawFileSlice(
-                    raw=sql[current_idx:next_match.start() + current_idx],
+                    raw=sql[current_idx:next_match_start],
                     slice_type='literal',
                     source_idx=current_idx,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type='literal',
-                    source_slice=slice(current_idx, next_match.start() + current_idx),
-                    templated_slice=slice(templated_idx, templated_idx + next_match.start())
+                    source_slice=slice(current_idx, next_match_start),
+                    templated_slice=slice(templated_idx, templated_idx + (next_match_start - current_idx))
                 ))
-                templated_idx += next_match.start()
+                templated_idx += (next_match_start - current_idx)
                 block_idx += 1
 
-            if next_match_type == 'templated' and r"ref(" in next_match.group(0):
-                ref_replaced = self.replace_ref_with_bq_table(next_match.group(0))
+            match_raw = sql[next_match_start:next_match_end]
+
+            if next_match_type == 'templated' and r"ref(" in match_raw:
+                ref_replaced = self.replace_ref_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
-            elif next_match_type == 'templated' and r"self(" in next_match.group(0):
-                self_replaced = self.replace_self_with_bq_table(next_match.group(0))
+            elif next_match_type == 'templated' and r"self(" in match_raw:
+                self_replaced = self.replace_self_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(self_replaced))
                 ))
                 templated_idx += len(self_replaced)
-            elif next_match_type == 'templated' and next_match.group(0).startswith('${') and "when(" not in next_match.group(0):
-                js_replaced = self.replace_js_expressions(next_match.group(0))
+            elif next_match_type == 'templated' and match_raw.startswith('${') and "when(" not in match_raw:
+                js_replaced = self.replace_js_expressions(match_raw)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(js_replaced))
                 ))
                 templated_idx += len(js_replaced)
             else:
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type=next_match_type,
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx)
                 ))
 
-            current_idx = current_idx + next_match.end()
+            current_idx = next_match_end
             block_idx += 1
 
         return replaced_sql, raw_slices, templated_slices
