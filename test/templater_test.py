@@ -296,6 +296,42 @@ post_operations {
     assert templated_slices[4].slice_type == "templated"
     assert templated_slices[5].slice_type == "literal"
 
+
+def test_slice_sqlx_template_with_post_operations_sql_block(templater):
+    """Test slicing with post_operations containing SQL code (original bug report case)."""
+    input_sqlx = """config {
+    type: "table"
+}
+SELECT * FROM ${ref('test')}
+post_operations {
+  BEGIN
+    ALTER TABLE ${self()} DROP PRIMARY KEY IF EXISTS;
+    ALTER TABLE ${self()} ADD PRIMARY KEY (some_id, another_id) NOT ENFORCED;
+  END;
+}
+"""
+    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\n"
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 6 slices: config, \nSELECT..., ${ref}, \n, post_operations, \n
+    assert len(raw_slices) == 6
+    assert raw_slices[0].raw.startswith("config")
+    assert raw_slices[1].raw == "\nSELECT * FROM "
+    assert raw_slices[2].raw == "${ref('test')}"
+    assert raw_slices[3].raw == "\n"
+    assert raw_slices[4].raw.startswith("post_operations")
+    assert raw_slices[5].raw == "\n"
+
+    assert len(templated_slices) == 6
+    assert templated_slices[0].slice_type == "templated"
+    assert templated_slices[1].slice_type == "literal"
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[3].slice_type == "literal"
+    assert templated_slices[4].slice_type == "templated"
+    assert templated_slices[5].slice_type == "literal"
+
+
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
     type: "table",
