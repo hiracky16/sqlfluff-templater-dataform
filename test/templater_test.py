@@ -332,6 +332,78 @@ post_operations {
     assert templated_slices[5].slice_type == "literal"
 
 
+def test_slice_sqlx_template_with_nested_js_expression(templater):
+    """Test slicing with JavaScript expressions containing nested braces (location.sqlx case)."""
+    input_sqlx = """SELECT
+  CAST(code AS STRING) AS location_id,
+  e.${ingestion.getTechnicalIngestionTimestamp({source: 'kafka'})} AS raw_source_ingestion_date_time,
+  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time
+FROM
+  ${ ref({ name: "source_table_v1", schema: "kafka__raw__events" }) } AS e
+"""
+    expected_sql = """SELECT
+  CAST(code AS STRING) AS location_id,
+  e.js_expression AS raw_source_ingestion_date_time,
+  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time
+FROM
+  `my_project.kafka__raw__events.source_table_v1` AS e
+"""
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 5 slices: literal, ${ingestion...}, literal, ${ref(...)}, literal
+    assert len(raw_slices) == 5
+    assert raw_slices[0].raw == "SELECT\n  CAST(code AS STRING) AS location_id,\n  e."
+    assert raw_slices[1].raw == "${ingestion.getTechnicalIngestionTimestamp({source: 'kafka'})}"
+    assert raw_slices[2].raw == " AS raw_source_ingestion_date_time,\n  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time\nFROM\n  "
+    assert raw_slices[3].raw == '${ ref({ name: "source_table_v1", schema: "kafka__raw__events" }) }'
+    assert raw_slices[4].raw == " AS e\n"
+
+    assert len(templated_slices) == 5
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[3].slice_type == "templated"
+    assert templated_slices[4].slice_type == "literal"
+
+
+def test_slice_sqlx_template_with_when_expression_two_params(templater):
+    """Test slicing with WHEN expression containing two parameters (work_item.sqlx case)."""
+    input_sqlx = """SELECT
+  item_id,
+  rawSourceIngestionDateTime
+FROM combined_items
+WHERE
+  rawSourceIngestionDateTime > ${when(incremental(), `event_timestamp_checkpoint`, `timestamp('0001-01-01')`) }
+
+QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)
+"""
+    expected_sql = """SELECT
+  item_id,
+  rawSourceIngestionDateTime
+FROM combined_items
+WHERE
+  rawSourceIngestionDateTime > `timestamp('0001-01-01')`
+
+QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)
+"""
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 3 slices: literal, ${when...}, literal
+    assert len(raw_slices) == 3
+    assert raw_slices[0].raw == "SELECT\n  item_id,\n  rawSourceIngestionDateTime\nFROM combined_items\nWHERE\n  rawSourceIngestionDateTime > "
+    assert raw_slices[1].raw == "${when(incremental(), `event_timestamp_checkpoint`, `timestamp('0001-01-01')`) }"
+    assert raw_slices[2].raw == "\n\nQUALIFY\n  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)\n"
+
+    assert len(templated_slices) == 3
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+
+
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
     type: "table",

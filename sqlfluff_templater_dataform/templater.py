@@ -21,10 +21,10 @@ CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'\s*js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
-JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{[^\}]*\}'
-REF_PATTERN = r'\$\{\s*ref\(((?:[^(){}]|\{[^{}]*\})*)\)\s*\}'
+JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{'
+REF_PATTERN = r'\$\{\s*ref\((.*?)\)\s*\}'
 SELF_PATTERN = r'\$\{\s*self\(\s*\)\s*\}'
-INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)\s*}'
+INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\((.*?)\)\s*\}'
 
 class DataformTemplater(RawTemplater):
     """A templater for Dataform SQLX files.
@@ -186,6 +186,44 @@ class DataformTemplater(RawTemplater):
             i += 1
         return -1  # not found
 
+    def find_expression_end(self, sql: str, start: int) -> int:
+        """Find the end of a JavaScript expression starting with ${ at position start.
+
+        This method implements a brace-counting algorithm to find the matching
+        closing brace for a JavaScript expression that starts with ${ at the given
+        position. It correctly handles arbitrary nesting levels by maintaining
+        a counter that increments for each '{' and decrements for each '}'.
+
+        The algorithm ensures that nested expressions are properly traversed, making
+        it robust for complex JavaScript expressions with deeply nested structures like:
+        - Nested function calls with object parameters
+        - Conditional expressions within expressions
+        - Object literals with nested objects
+        - Array literals with complex expressions
+
+        Args:
+            sql: The SQL string to search in
+            start: The position of the opening { in ${ that starts the expression
+
+        Returns:
+            The position after the matching closing brace '}', or -1 if no
+            matching brace is found (malformed input)
+        """
+        brace_count = 0
+        i = start
+        while i < len(sql):
+            if sql[i:i+2] == '${':
+                brace_count += 1
+                i += 1  # skip the $
+            elif sql[i] == '{':
+                brace_count += 1
+            elif sql[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return i + 1  # include the }
+            i += 1
+        return -1  # not found
+
     def replace_ref_with_bq_table(self, sql):
         """ A regular expression to handle ref function calls that include spaces. """
         pattern = re.compile(REF_PATTERN)
@@ -278,14 +316,87 @@ class DataformTemplater(RawTemplater):
         return re.sub(pattern, self_to_table, sql)
 
     def replace_incremental_condition(self, sql: str):
-      pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
-      return re.sub(pattern, '', sql)
+        pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
+        def replace_when(match):
+            # For linting purposes, we assume non-incremental mode
+            # when(condition, value) with one param: return empty (non-incremental)
+            # when(condition, value1, value2) with two params: return value2 (fallback)
+            
+            content = match.group(1)  # Everything inside when(...)
+            
+            # Split by comma, but be careful with quoted strings
+            params = []
+            current_param = ''
+            in_backtick = False
+            in_double_quote = False
+            in_single_quote = False
+            paren_depth = 0
+            
+            i = 0
+            while i < len(content):
+                char = content[i]
+                if char == '`' and not in_double_quote and not in_single_quote:
+                    in_backtick = not in_backtick
+                elif char == '"' and not in_backtick and not in_single_quote:
+                    in_double_quote = not in_double_quote
+                elif char == "'" and not in_backtick and not in_double_quote:
+                    in_single_quote = not in_single_quote
+                elif char == '(' and not in_backtick and not in_double_quote and not in_single_quote:
+                    paren_depth += 1
+                elif char == ')' and not in_backtick and not in_double_quote and not in_single_quote:
+                    paren_depth -= 1
+                elif char == ',' and not in_backtick and not in_double_quote and not in_single_quote and paren_depth == 0:
+                    params.append(current_param.strip())
+                    current_param = ''
+                    i += 1
+                    continue
+                current_param += char
+                i += 1
+            
+            if current_param.strip():
+                params.append(current_param.strip())
+            
+            # Remove the condition (first parameter)
+            if len(params) > 1:
+                value_params = params[1:]
+            else:
+                value_params = params
+            
+            if len(value_params) == 0:
+                return ''  # No value parameters
+            elif len(value_params) == 1:
+                # Single value parameter: return empty (non-incremental mode)
+                return ''
+            else:
+                # Multiple value parameters: return the last one (fallback)
+                return value_params[-1]
+        
+        return re.sub(pattern, replace_when, sql)
 
     def replace_js_expressions(self, sql: str) -> str:
-        pattern = re.compile(JS_EXPRESSION_PATTERN_IN_SQL)
-        def js_to_placeholder(match):
-            return "js_expression"
-        return re.sub(pattern, js_to_placeholder, sql)
+        """Replace JavaScript expressions with placeholders.
+        
+        This method uses brace-counting to properly handle expressions
+        with nested braces like ${func({param: 'value'})}.
+        """
+        result = []
+        i = 0
+        while i < len(sql):
+            if sql[i:i+2] == '${' and not (
+                sql[i:i+6] == '${ref(' or 
+                sql[i:i+7] == '${self(' or
+                sql[i:i+6] == '${when('
+            ):
+                # Found a JS expression, find its end
+                expr_start = i + 1  # position of {
+                end = self.find_expression_end(sql, expr_start)
+                if end != -1:
+                    result.append("js_expression")
+                    i = end
+                    continue
+            result.append(sql[i])
+            i += 1
+        return ''.join(result)
 
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
         """Slice SQLX content into raw and templated components.
@@ -363,6 +474,19 @@ class DataformTemplater(RawTemplater):
                             continue  # invalid block, skip
                     else:
                         continue
+                elif pattern == JS_EXPRESSION_PATTERN_IN_SQL:
+                    # Special handling for JavaScript expressions: find ${, then find matching }
+                    match = re.search(r'\$\{', sql[current_idx:])
+                    if match:
+                        match_start = current_idx + match.start()
+                        expr_start = current_idx + match.end() - 1  # position of {
+                        end = self.find_expression_end(sql, expr_start)
+                        if end != -1:
+                            match_end = end
+                        else:
+                            continue  # invalid expression, skip
+                    else:
+                        continue
                 else:
                     match = re.search(pattern, sql[current_idx:])
                     if match:
@@ -436,7 +560,21 @@ class DataformTemplater(RawTemplater):
                     templated_slice=slice(templated_idx, templated_idx + len(self_replaced))
                 ))
                 templated_idx += len(self_replaced)
-            elif next_match_type == 'templated' and match_raw.startswith('${') and "when(" not in match_raw:
+            elif next_match_type == 'templated' and match_raw.startswith('${') and 'when(' in match_raw:
+                when_replaced = self.replace_incremental_condition(match_raw)
+                raw_slices.append(RawFileSlice(
+                    raw=match_raw,
+                    slice_type='templated',
+                    source_idx=next_match_start,
+                    block_idx=block_idx
+                ))
+                templated_slices.append(TemplatedFileSlice(
+                    slice_type=next_match_type,
+                    source_slice=slice(next_match_start, next_match_end),
+                    templated_slice=slice(templated_idx, templated_idx + len(when_replaced))
+                ))
+                templated_idx += len(when_replaced)
+            elif next_match_type == 'templated' and match_raw.startswith('${') and "when(" not in match_raw and 'ref(' not in match_raw and 'self(' not in match_raw:
                 js_replaced = self.replace_js_expressions(match_raw)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,

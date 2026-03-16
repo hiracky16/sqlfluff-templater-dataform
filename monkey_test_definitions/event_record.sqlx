@@ -1,0 +1,85 @@
+-- This is an anonymized example template. Content is intentionally generic to preserve privacy.
+
+config {
+    type: "table",
+    schema: "raw__events",
+    name: "event_record",
+    assertions: {
+        nonNull: ["event_id"],
+        uniqueKey: ["event_id"]
+    },
+    bigquery: {
+        labels: {
+            domain: "analytics",
+            table_freshness: "1"
+        }
+    }
+}
+
+post_operations {
+  BEGIN 
+    ALTER TABLE ${self()} DROP PRIMARY KEY IF EXISTS;
+    ALTER TABLE ${self()} ADD PRIMARY KEY (event_id) NOT ENFORCED;
+  
+  -- catch when run without update permissions
+  EXCEPTION WHEN ERROR THEN END;
+}
+
+
+WITH
+/********** source_events_a **********/
+-- Normalize event payloads from source A
+SOURCE_EVENTS_A AS (
+    SELECT
+        CAST(a.EVENT_ID AS STRING) AS event_id,
+        CAST(a.SOURCE AS STRING) AS source_id,
+        CAST(a.PAYLOAD AS STRING) AS payload,
+        ${ingestion.getTechnicalIngestionTimestamp({source : 'kafka'})} AS raw_ingest_time
+    FROM
+        ${ ref({ name: "source_events_a", schema: "kafka__raw__events" }) } AS a
+),
+
+/********** source_events_b **********/
+SOURCE_EVENTS_B AS (
+    SELECT
+        CAST(b.EVENT_ID AS STRING) AS event_id,
+        CAST(b.SOURCE AS STRING) AS source_id,
+        CAST(b.PAYLOAD AS STRING) AS payload,
+        ${ingestion.getTechnicalIngestionTimestamp({source : 'kafka'})} AS raw_ingest_time
+    FROM
+        ${ ref({ name: "source_events_b", schema: "kafka__raw__events" }) } AS b
+),
+
+/********** combined_events **********/
+COMBINED_EVENTS AS (
+    SELECT * FROM SOURCE_EVENTS_A
+    UNION ALL
+    SELECT * FROM SOURCE_EVENTS_B
+),
+
+/********** latest_events **********/
+LATEST_EVENTS AS (
+    SELECT
+        event_id,
+        source_id,
+        payload,
+        raw_ingest_time,
+        ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY raw_ingest_time DESC) AS rn
+    FROM
+        COMBINED_EVENTS
+    QUALIFY rn = 1
+)
+
+/*****************************/
+-- Final output
+SELECT
+    event_id,
+    source_id,
+    payload,
+    raw_ingest_time,
+    CURRENT_TIMESTAMP() AS processing_time
+FROM
+    LATEST_EVENTS
+
+-- For debugging:
+-- ORDER BY raw_ingest_time DESC

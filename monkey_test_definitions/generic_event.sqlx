@@ -1,0 +1,67 @@
+config {
+    type: "table",
+    schema: "raw__events",
+    name: "generic_event",
+    columns: {
+       item_id: "uniqueID used for incremental",
+    },
+    description: "cleaned raw event data",
+    assertions: {
+        nonNull: ["item_id"],
+        uniqueKey: ["item_id"]
+    },
+    bigquery: {
+        labels: {
+            domain: "analytics",
+            table_freshness: "1"
+        }
+    }
+}
+
+post_operations {
+  BEGIN 
+    ALTER TABLE ${self()} DROP PRIMARY KEY IF EXISTS;
+    ALTER TABLE ${self()} ADD PRIMARY KEY (item_id) NOT ENFORCED;
+  
+  -- catch when using on personal account without update permissions
+  EXCEPTION WHEN ERROR THEN END;
+}
+
+WITH
+/********** combined_records **********/ 
+-- Combine event sheets to build historical records
+combined_records AS (
+SELECT
+  CAST(id AS STRING) AS item_id,
+  CAST(source AS STRING) AS source_id,
+  CAST(eventType AS STRING) AS event_type,
+  CAST(payload AS STRING) AS payload,
+  CAST(metadata AS STRUCT<key STRING, value STRING>) AS metadata,
+  ${ingestion.getTechnicalIngestionTimestamp({source : 'kafka'})} as rawSourceIngestionDateTime
+FROM
+  ${ ref({ name: "source_events_table_a", schema: "kafka__raw__events" }) }
+
+UNION ALL
+
+SELECT
+  CAST(id AS STRING) AS item_id,
+  CAST(source AS STRING) AS source_id,
+  CAST(eventType AS STRING) AS event_type,
+  CAST(payload AS STRING) AS payload,
+  CAST(metadata AS STRUCT<key STRING, value STRING>) AS metadata,
+  ${ingestion.getTechnicalIngestionTimestamp({source : 'kafka'})} as rawSourceIngestionDateTime
+FROM
+  ${ ref({ name: "source_events_table_b", schema: "kafka__raw__events" }) }
+)
+
+/****************************************/   
+SELECT
+  *,
+  CURRENT_TIMESTAMP() as rawDataformProcessingDateTime
+FROM
+  combined_records
+WHERE
+  rawSourceIngestionDateTime > ${when(incremental(), `event_timestamp_checkpoint`, `timestamp('0001-01-01')`) }
+
+QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)
