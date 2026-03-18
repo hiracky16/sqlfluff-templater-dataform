@@ -21,13 +21,40 @@ CONFIG_BLOCK_PATTERN = r'config\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'\s*js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
-JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{[^\}]*\}'
-REF_PATTERN = r'\$\{\s*ref\(((?:[^(){}]|\{[^{}]*\})*)\)\s*\}'
+JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{'
+REF_PATTERN = r'\$\{\s*ref\((.*?)\)\s*\}'
 SELF_PATTERN = r'\$\{\s*self\(\s*\)\s*\}'
-INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\(\s*[\w]+\(\),\s*(?:(`[^`]*`)|("[^"]*")|(\'[^\']*\')|[^{}]*)\)\s*}'
+INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\((.*?)\)\s*\}'
 
 class DataformTemplater(RawTemplater):
-    """A templater using dataform."""
+    """A templater for Dataform SQLX files.
+
+    This templater processes Dataform .sqlx files by:
+
+    1. Removing Dataform-specific blocks (config, pre_operations, post_operations, js)
+    2. Replacing Dataform expressions (${ref()}, ${self()}) with BigQuery table references
+    3. Handling incremental conditions and JavaScript expressions in SQL
+
+    Block Handling:
+    Dataform blocks can contain deeply nested braces in JavaScript code. The templater
+    uses a brace-counting algorithm to correctly identify block boundaries regardless
+    of nesting depth, ensuring proper removal of blocks even when they contain complex
+    JavaScript with multiple levels of nested functions, conditionals, or objects.
+
+    For example, this post_operations block with deep nesting is handled correctly:
+        post_operations {
+          if (condition) {
+            const result = ${self()};
+            if (result) {
+              console.log({ nested: { object: true } });
+            }
+          }
+        }
+
+    The brace-counting approach ensures that the entire block is identified and removed,
+    preventing slicing errors that could occur with regex-based approaches limited to
+    fixed nesting depths.
+    """
 
     name = "dataform"
     sequential_fail_limit = 3
@@ -86,16 +113,116 @@ class DataformTemplater(RawTemplater):
         ), []
 
     def replace_blocks(self, in_str: str) -> str:
-        for block_pattern in [
-            CONFIG_BLOCK_PATTERN,
-            PRE_OPERATION_BLOCK_PATTERN,
-            POST_OPERATION_BLOCK_PATTERN,
-            JS_BLOCK_PATTERN
-        ]:
-            pattern = re.compile(block_pattern, re.DOTALL)
-            in_str = re.sub(pattern, '', in_str)
+        """Remove all Dataform blocks from the SQL string.
 
+        This method identifies and removes config, pre_operations, post_operations,
+        and js blocks from the input string. It uses a brace-counting approach to
+        handle blocks with arbitrary nesting depth, ensuring that blocks containing
+        complex JavaScript code with deeply nested braces are correctly identified
+        and removed in their entirety.
+
+        The algorithm:
+        1. Search for block start patterns (keyword followed by {)
+        2. Use find_block_end() to locate the matching closing brace
+        3. Remove the entire block (including nested content)
+        4. Repeat until no more blocks are found
+
+        This approach is robust against JavaScript code with unlimited nesting levels,
+        unlike regex-based methods that are limited to fixed recursion depths.
+
+        Args:
+            in_str: The input SQLX string containing Dataform blocks
+
+        Returns:
+            The input string with all Dataform blocks removed
+        """
+        block_keywords = ['config', 'pre_operations', 'post_operations', 'js']
+        for keyword in block_keywords:
+            pattern = rf'{re.escape(keyword)}\s*\{{'
+            while True:
+                match = re.search(pattern, in_str)
+                if not match:
+                    break
+                start = match.end() - 1  # position of {
+                end = self.find_block_end(in_str, start)
+                if end != -1:
+                    in_str = in_str[:match.start()] + in_str[end:]
+                else:
+                    break  # invalid, stop
         return in_str
+
+    def find_block_end(self, sql: str, start: int) -> int:
+        """Find the end of a block starting with { at position start.
+
+        This method implements a brace-counting algorithm to find the matching
+        closing brace for a block that starts with an opening brace at the given
+        position. It correctly handles arbitrary nesting levels by maintaining
+        a counter that increments for each '{' and decrements for each '}'.
+
+        The algorithm ensures that nested blocks are properly traversed, making
+        it robust for complex JavaScript code with deeply nested structures like:
+        - Nested function calls
+        - Conditional statements within conditionals
+        - Object literals with nested objects
+        - Array literals with complex expressions
+
+        Args:
+            sql: The SQL string to search in
+            start: The position of the opening brace '{' that starts the block
+
+        Returns:
+            The position after the matching closing brace '}', or -1 if no
+            matching brace is found (malformed input)
+        """
+        brace_count = 0
+        i = start
+        while i < len(sql):
+            if sql[i] == '{':
+                brace_count += 1
+            elif sql[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return i + 1  # include the }
+            i += 1
+        return -1  # not found
+
+    def find_expression_end(self, sql: str, start: int) -> int:
+        """Find the end of a JavaScript expression starting with ${ at position start.
+
+        This method implements a brace-counting algorithm to find the matching
+        closing brace for a JavaScript expression that starts with ${ at the given
+        position. It correctly handles arbitrary nesting levels by maintaining
+        a counter that increments for each '{' and decrements for each '}'.
+
+        The algorithm ensures that nested expressions are properly traversed, making
+        it robust for complex JavaScript expressions with deeply nested structures like:
+        - Nested function calls with object parameters
+        - Conditional expressions within expressions
+        - Object literals with nested objects
+        - Array literals with complex expressions
+
+        Args:
+            sql: The SQL string to search in
+            start: The position of the opening { in ${ that starts the expression
+
+        Returns:
+            The position after the matching closing brace '}', or -1 if no
+            matching brace is found (malformed input)
+        """
+        brace_count = 0
+        i = start
+        while i < len(sql):
+            if sql[i:i+2] == '${':
+                brace_count += 1
+                i += 1  # skip the $
+            elif sql[i] == '{':
+                brace_count += 1
+            elif sql[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return i + 1  # include the }
+            i += 1
+        return -1  # not found
 
     def replace_ref_with_bq_table(self, sql):
         """ A regular expression to handle ref function calls that include spaces. """
@@ -189,22 +316,124 @@ class DataformTemplater(RawTemplater):
         return re.sub(pattern, self_to_table, sql)
 
     def replace_incremental_condition(self, sql: str):
-      pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
-      return re.sub(pattern, '', sql)
+        pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
+        def replace_when(match):
+            # For linting purposes, we assume non-incremental mode
+            # when(condition, value) with one param: return empty (non-incremental)
+            # when(condition, value1, value2) with two params: return value2 (fallback)
+            
+            content = match.group(1)  # Everything inside when(...)
+            
+            # Split by comma, but be careful with quoted strings
+            params = []
+            current_param = ''
+            in_backtick = False
+            in_double_quote = False
+            in_single_quote = False
+            paren_depth = 0
+            
+            i = 0
+            while i < len(content):
+                char = content[i]
+                if char == '`' and not in_double_quote and not in_single_quote:
+                    in_backtick = not in_backtick
+                elif char == '"' and not in_backtick and not in_single_quote:
+                    in_double_quote = not in_double_quote
+                elif char == "'" and not in_backtick and not in_double_quote:
+                    in_single_quote = not in_single_quote
+                elif char == '(' and not in_backtick and not in_double_quote and not in_single_quote:
+                    paren_depth += 1
+                elif char == ')' and not in_backtick and not in_double_quote and not in_single_quote:
+                    paren_depth -= 1
+                elif char == ',' and not in_backtick and not in_double_quote and not in_single_quote and paren_depth == 0:
+                    params.append(current_param.strip())
+                    current_param = ''
+                    i += 1
+                    continue
+                current_param += char
+                i += 1
+            
+            if current_param.strip():
+                params.append(current_param.strip())
+            
+            # Remove the condition (first parameter)
+            if len(params) > 1:
+                value_params = params[1:]
+            else:
+                value_params = params
+            
+            if len(value_params) == 0:
+                return ''  # No value parameters
+            elif len(value_params) == 1:
+                # Single value parameter: return empty (non-incremental mode)
+                return ''
+            else:
+                # Multiple value parameters: return the last one (fallback)
+                return value_params[-1]
+        
+        return re.sub(pattern, replace_when, sql)
 
     def replace_js_expressions(self, sql: str) -> str:
-        pattern = re.compile(JS_EXPRESSION_PATTERN_IN_SQL)
-        def js_to_placeholder(match):
-            return "js_expression"
-        return re.sub(pattern, js_to_placeholder, sql)
+        """Replace JavaScript expressions with placeholders.
+        
+        This method uses brace-counting to properly handle expressions
+        with nested braces like ${func({param: 'value'})}.
+        """
+        result = []
+        i = 0
+        while i < len(sql):
+            if sql[i:i+2] == '${' and not (
+                sql[i:i+6] == '${ref(' or 
+                sql[i:i+7] == '${self(' or
+                sql[i:i+6] == '${when('
+            ):
+                # Found a JS expression, find its end
+                expr_start = i + 1  # position of {
+                end = self.find_expression_end(sql, expr_start)
+                if end != -1:
+                    result.append("js_expression")
+                    i = end
+                    continue
+            result.append(sql[i])
+            i += 1
+        return ''.join(result)
 
     def slice_sqlx_template(self, sql: str) -> Tuple[str, List[RawFileSlice], List[TemplatedFileSlice]]:
-        """ A function that slices SQLX and returns both RawFileSlice and TemplatedFileSlice simultaneously. """
+        """Slice SQLX content into raw and templated components.
+
+        This method processes the input SQLX string and creates corresponding slices
+        that map between the original source and the templated SQL. It handles:
+
+        1. Dataform blocks (config, pre_operations, post_operations, js) - marked as 'templated'
+        2. Dataform expressions (${ref()}, ${self()}, ${when()}) - replaced and marked as 'templated'
+        3. JavaScript expressions in SQL (${...}) - replaced with placeholders
+        4. Literal SQL content - preserved as-is
+
+        The slicing ensures that sqlfluff can map formatting changes back to the
+        original source file. For blocks with deeply nested braces, the brace-counting
+        algorithm in find_block_end() ensures accurate block boundary detection.
+
+        The method processes patterns in order of specificity, ensuring that nested
+        expressions within blocks are handled correctly. Block detection uses
+        brace-counting rather than regex recursion to support unlimited nesting depths.
+
+        Args:
+            sql: The raw SQLX string to slice
+
+        Returns:
+            A tuple of (templated_sql, raw_slices, templated_slices) where:
+            - templated_sql: The SQL with all Dataform elements processed/replaced
+            - raw_slices: List of RawFileSlice objects representing source segments
+            - templated_slices: List of TemplatedFileSlice objects for mapping
+        """
         replaced_sql = self.replace_blocks(sql)
         replaced_sql = self.replace_self_with_bq_table(replaced_sql)
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
         replaced_sql = self.replace_incremental_condition(replaced_sql)
         replaced_sql = self.replace_js_expressions(replaced_sql)
+
+        # Block keywords that start blocks
+        block_keywords = ['config', 'pre_operations', 'post_operations', 'js']
 
         # A regular expression pattern that matches the structure of SQLX.
         patterns = [
@@ -227,14 +456,50 @@ class DataformTemplater(RawTemplater):
         while current_idx < len(sql):
             next_match = None
             next_match_type = 'templated'
+            next_match_start = None
+            next_match_end = None
 
             for pattern, match_type in patterns:
-                match = re.search(pattern, sql[current_idx:])
-                if match:
-                    match_start = current_idx + match.start()
-                    if not next_match or match_start < (current_idx + next_match.start()):
-                        next_match = match
-                        next_match_type = match_type
+                if pattern in [CONFIG_BLOCK_PATTERN, PRE_OPERATION_BLOCK_PATTERN, POST_OPERATION_BLOCK_PATTERN, JS_BLOCK_PATTERN]:
+                    # Special handling for blocks: find start, then find matching }
+                    start_pattern = r'(config|pre_operations|post_operations|js)\s*\{'
+                    match = re.search(start_pattern, sql[current_idx:])
+                    if match and match.group(1) in block_keywords:
+                        match_start = current_idx + match.start()
+                        brace_start = current_idx + match.end() - 1  # position of {
+                        end = self.find_block_end(sql, brace_start)
+                        if end != -1:
+                            match_end = end
+                        else:
+                            continue  # invalid block, skip
+                    else:
+                        continue
+                elif pattern == JS_EXPRESSION_PATTERN_IN_SQL:
+                    # Special handling for JavaScript expressions: find ${, then find matching }
+                    match = re.search(r'\$\{', sql[current_idx:])
+                    if match:
+                        match_start = current_idx + match.start()
+                        expr_start = current_idx + match.end() - 1  # position of {
+                        end = self.find_expression_end(sql, expr_start)
+                        if end != -1:
+                            match_end = end
+                        else:
+                            continue  # invalid expression, skip
+                    else:
+                        continue
+                else:
+                    match = re.search(pattern, sql[current_idx:])
+                    if match:
+                        match_start = current_idx + match.start()
+                        match_end = current_idx + match.end()
+                    else:
+                        continue
+
+                if not next_match or match_start < next_match_start:
+                    next_match = match
+                    next_match_type = match_type
+                    next_match_start = match_start
+                    next_match_end = match_end
 
             if not next_match:
                 raw_slices.append(RawFileSlice(
@@ -250,77 +515,94 @@ class DataformTemplater(RawTemplater):
                 ))
                 break
 
-            if next_match.start() > 0:
+            if next_match_start > current_idx:
                 raw_slices.append(RawFileSlice(
-                    raw=sql[current_idx:next_match.start() + current_idx],
+                    raw=sql[current_idx:next_match_start],
                     slice_type='literal',
                     source_idx=current_idx,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type='literal',
-                    source_slice=slice(current_idx, next_match.start() + current_idx),
-                    templated_slice=slice(templated_idx, templated_idx + next_match.start())
+                    source_slice=slice(current_idx, next_match_start),
+                    templated_slice=slice(templated_idx, templated_idx + (next_match_start - current_idx))
                 ))
-                templated_idx += next_match.start()
+                templated_idx += (next_match_start - current_idx)
                 block_idx += 1
 
-            if next_match_type == 'templated' and r"ref(" in next_match.group(0):
-                ref_replaced = self.replace_ref_with_bq_table(next_match.group(0))
+            match_raw = sql[next_match_start:next_match_end]
+
+            if next_match_type == 'templated' and match_raw.startswith('${') and 'ref(' in match_raw:
+                ref_replaced = self.replace_ref_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
-            elif next_match_type == 'templated' and r"self(" in next_match.group(0):
-                self_replaced = self.replace_self_with_bq_table(next_match.group(0))
+            elif next_match_type == 'templated' and match_raw.startswith('${') and 'self(' in match_raw:
+                self_replaced = self.replace_self_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(self_replaced))
                 ))
                 templated_idx += len(self_replaced)
-            elif next_match_type == 'templated' and next_match.group(0).startswith('${') and "when(" not in next_match.group(0):
-                js_replaced = self.replace_js_expressions(next_match.group(0))
+            elif next_match_type == 'templated' and match_raw.startswith('${') and 'when(' in match_raw:
+                when_replaced = self.replace_incremental_condition(match_raw)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type='templated',
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
+                    templated_slice=slice(templated_idx, templated_idx + len(when_replaced))
+                ))
+                templated_idx += len(when_replaced)
+            elif next_match_type == 'templated' and match_raw.startswith('${') and "when(" not in match_raw and 'ref(' not in match_raw and 'self(' not in match_raw:
+                js_replaced = self.replace_js_expressions(match_raw)
+                raw_slices.append(RawFileSlice(
+                    raw=match_raw,
+                    slice_type='templated',
+                    source_idx=next_match_start,
+                    block_idx=block_idx
+                ))
+                templated_slices.append(TemplatedFileSlice(
+                    slice_type=next_match_type,
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx + len(js_replaced))
                 ))
                 templated_idx += len(js_replaced)
             else:
+                # This is for blocks (config, pre_operations, post_operations, js)
                 raw_slices.append(RawFileSlice(
-                    raw=next_match.group(0),
+                    raw=match_raw,
                     slice_type=next_match_type,
-                    source_idx=current_idx + next_match.start(),
+                    source_idx=next_match_start,
                     block_idx=block_idx
                 ))
                 templated_slices.append(TemplatedFileSlice(
                     slice_type=next_match_type,
-                    source_slice=slice(current_idx + next_match.start(), current_idx + next_match.end()),
+                    source_slice=slice(next_match_start, next_match_end),
                     templated_slice=slice(templated_idx, templated_idx)
                 ))
 
-            current_idx = current_idx + next_match.end()
+            current_idx = next_match_end
             block_idx += 1
 
         return replaced_sql, raw_slices, templated_slices

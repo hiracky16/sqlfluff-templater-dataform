@@ -1,0 +1,58 @@
+config {
+    type: "table",
+    schema: "raw__data",
+    name: "location",
+    assertions: {
+        nonNull: ["location_id"],
+        uniqueKey: ["location_id"]
+    },
+    bigquery: {
+        labels: {
+            domain: "operations",
+            table_freshness: "1"
+        }
+    }
+}
+
+post_operations {
+  BEGIN 
+    ALTER TABLE ${self()} DROP PRIMARY KEY IF EXISTS;
+    ALTER TABLE ${self()} ADD PRIMARY KEY (location_id) NOT ENFORCED;
+  END;  
+    }
+
+
+SELECT
+  CAST(code AS STRING) AS location_id,  
+  CAST(name AS STRING) AS location_name,
+  CAST(shortName  AS STRING) AS location_short_name,
+  CAST(legalEntityCode AS STRING) AS organization_code,
+  CAST(timezone AS STRING)  AS timezone,
+  STRUCT(
+  CAST(e.address.name AS STRING) AS name,
+  CAST(e.address.streetName AS STRING) AS street_name,
+  CAST(e.address.postalCode AS STRING) AS postal_code,
+  CAST(e.address.city AS STRING) AS city,
+  CAST(e.address.countryCodeIso3 AS STRING) AS country_code
+  ) AS address,
+  e.rasterLocations AS raster_locations,
+  STRUCT(
+  CAST(e.customerService.phone AS STRING) AS phone,
+  CAST(e.customerService.email AS STRING) AS email
+  ) AS customer_service,
+  STRUCT(
+  CAST(e.technicalService.phone AS STRING) AS phone,
+  CAST(e.technicalService.email AS STRING) AS email
+  ) AS technical_service,
+  STRUCT(
+  CAST(e.geoLocation.latitude AS FLOAT64) AS latitude,
+  CAST(e.geoLocation.longitude AS FLOAT64) AS longitude
+  ) AS geo_location,
+  CAST(active AS BOOLEAN) AS is_active,
+  e.${ingestion.getTechnicalIngestionTimestamp({source: 'kafka'})} AS raw_source_ingestion_date_time,
+  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time 
+
+FROM
+  ${ ref({ name: "source_table_v1", schema: "source_raw__events" })   } AS e
+  QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY e.code ORDER BY e.kafkaEventTime DESC, e.kafkaData.insertTime DESC)

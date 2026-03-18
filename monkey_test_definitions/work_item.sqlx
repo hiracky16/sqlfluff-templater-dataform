@@ -1,0 +1,116 @@
+-- This is an anonymized example template for templater validation.
+
+config {
+    type: "table",
+    schema: "raw__events",
+    name: "generic_item",
+    columns: {
+       item_id: "Unique identifier for incremental processing",
+    },
+    description: "Anonymized example event data",
+    assertions: {
+        nonNull: ["item_id"],
+        uniqueKey: ["item_id"]
+    },
+    bigquery: {
+        labels: {
+            domain: "analytics",
+            table_freshness: "1"
+        }
+    }
+}
+
+post_operations {
+  BEGIN 
+    ALTER TABLE ${self()} DROP PRIMARY KEY IF EXISTS;
+    ALTER TABLE ${self()} ADD PRIMARY KEY (item_id) NOT ENFORCED;
+  
+  -- catch when run without update permissions
+  EXCEPTION WHEN ERROR THEN END;
+}
+
+WITH
+/********** combined_events **********/ 
+-- Merge events from multiple sources
+combined_events AS (
+SELECT
+  CAST(event_id AS STRING) AS item_id,
+  CAST(external_id AS STRING) AS external_id,
+  CAST(object_id AS STRING) AS object_id,
+  CAST(card_id AS STRING) AS card_id,
+  CAST(contract_id AS STRING) AS contract_id,
+  CAST(organization AS STRING) AS organization,
+  CAST(branch AS STRING) AS branch,
+  CAST(event_type AS STRING) AS item_type,
+  CAST(description_execution AS STRING) AS execution_desc,
+  CAST(description_internal AS STRING) AS internal_desc,
+  CAST(description_pending AS STRING) AS pending_desc,
+  CAST(status_code AS STRING) AS status,
+  CAST(is_blocking AS BOOLEAN) AS is_blocking,
+  CAST(estimated_duration_sec AS INTEGER) AS estimated_time_seconds,
+  CAST(created_by_name AS STRING) AS created_by,
+  CAST(created_by_id AS STRING) AS created_by_user_id,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', closed_at) AS closed_at,
+  CAST(department_code AS STRING) AS department,
+  CAST(skill_level AS INTEGER) AS skill_level,
+  CAST(invoice_target AS STRING) AS invoice_target,
+  CAST(is_field_service AS BOOLEAN) AS is_field_service,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', created_at) AS created_at,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', reported_at) AS reported_at,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*SZ', promised_at) AS promised_at,
+  CAST(volume_liters AS FLOAT64) AS volume_liters,
+  CAST(is_work_started AS BOOLEAN) AS is_work_started,
+  CAST(option_config AS STRUCT<option_id STRING, option_type STRING>) AS option_config,
+  CAST(order_lot_id AS STRING) AS order_lot_id,
+  CAST(order_customer_name AS STRING) AS order_customer_name,
+  CAST(order_number AS STRING) AS order_number,
+  CAST(purchase_lot_id AS STRING) AS purchase_lot_id,
+  CAST(operational_hours AS INTEGER) AS operational_hours,
+  CAST(is_external_repair AS BOOLEAN) AS is_external_repair,
+  CAST(location_info AS STRUCT<street STRING, postal_code STRING, city STRING, country_code STRING>) AS location_info,
+  CAST(contact_name AS STRING) AS contact_name,
+  CAST(contact_email AS STRING) AS contact_email,
+  CAST(contact_phone AS STRING) AS contact_phone,
+  CAST(NULL AS STRING) AS closing_technician,
+  CAST(NULL AS STRING) AS closed_by_id,
+  CAST(is_blocked AS BOOLEAN) AS is_blocked,
+  CAST(contract_external_id AS STRING) AS contract_external_id,
+  CAST(creation_rule AS STRUCT<rule_code STRING>) AS creation_rule,
+  CAST(order_info AS STRUCT<org STRING, ext_id STRING, line_id STRING>) AS order_info,
+  CAST(task_codes AS ARRAY<STRING>) AS task_codes,
+  CAST(attachments AS ARRAY<STRUCT<id STRING, url STRING, file_name STRING>>) AS attachments,
+  CAST(NULL AS STRING) AS responsible_order_line,
+  CAST(NULL AS STRING) AS responsible_contract_id,
+  CAST(NULL AS STRING) AS responsible_contract_ref,
+  CAST(NULL AS STRING) AS responsible_order,
+  CAST(NULL AS STRING) AS responsible_org,
+  CAST(NULL AS STRING) AS responsible_branch,
+  CAST(NULL AS STRING) AS responsible_lease,
+  ${ingestion.getTechnicalIngestionTimestamp({source : 'kafka'})} as raw_ingest_time
+FROM
+  ${ ref({ name: "source_events_created", schema: "kafka__raw__events" }) }
+
+UNION ALL
+
+SELECT
+  CAST(event_id AS STRING) AS item_id,
+  CAST(external_id AS STRING) AS external_id,
+  CAST(organization AS STRING) AS organization,
+  CAST(branch AS STRING) AS branch,
+  CAST(event_type AS STRING) AS item_type,
+  ${ingestion.getTechnicalIngestionTimestamp({source : 'kafka'})} as raw_ingest_time
+FROM
+  ${ ref({ name: "source_events_updated", schema: "kafka__raw__events" }) }
+)
+
+/********** Final Output **********/   
+SELECT
+  *,
+  CURRENT_TIMESTAMP() as processing_time
+FROM
+  combined_events
+WHERE
+  raw_ingest_time > ${when(incremental(), `last_checkpoint`, `timestamp('0001-01-01')`) }
+
+QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY raw_ingest_time DESC)

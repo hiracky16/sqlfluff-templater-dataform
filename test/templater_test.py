@@ -197,20 +197,22 @@ js {
 }
 SELECT 1 AS value FROM my_table WHERE true
 """
-    expected_sql = """\nSELECT 1 AS value FROM my_table WHERE true
+    expected_sql = """\n\nSELECT 1 AS value FROM my_table WHERE true
 """
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
-    assert len(raw_slices) == 3
+    assert len(raw_slices) == 4
     assert raw_slices[0].raw.startswith("config")
-    assert raw_slices[1].raw.strip().startswith("js")
-    assert raw_slices[2].raw.startswith("\nSELECT 1")
+    assert raw_slices[1].raw == "\n"
+    assert raw_slices[2].raw.strip().startswith("js")
+    assert raw_slices[3].raw.startswith("\nSELECT 1")
 
-    assert len(templated_slices) == 3
+    assert len(templated_slices) == 4
     assert templated_slices[0].slice_type == "templated"
-    assert templated_slices[1].slice_type == "templated"
-    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[1].slice_type == "literal"
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[3].slice_type == "literal"
 
 
 
@@ -256,6 +258,151 @@ GROUP BY test
     assert templated_slices[5].slice_type == "literal"
     assert templated_slices[6].slice_type == "templated"
     assert templated_slices[7].slice_type == "literal"
+
+
+def test_slice_sqlx_template_with_post_operations_deeply_nested_js(templater):
+    """Test slicing with post_operations containing deeply nested JS braces."""
+    input_sqlx = """config {
+    type: "table"
+}
+SELECT * FROM ${ref('test')}
+post_operations {
+  if (true) {
+    const result = ${self()};
+    if (result) {
+      console.log('nested');
+    }
+  }
+}
+"""
+    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\n"
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 6 slices: config, \nSELECT..., ${ref}, \n, post_operations, \n
+    assert len(raw_slices) == 6
+    assert raw_slices[0].raw.startswith("config")
+    assert raw_slices[1].raw == "\nSELECT * FROM "
+    assert raw_slices[2].raw == "${ref('test')}"
+    assert raw_slices[3].raw == "\n"
+    assert raw_slices[4].raw.startswith("post_operations")
+    assert raw_slices[5].raw == "\n"
+
+    assert len(templated_slices) == 6
+    assert templated_slices[0].slice_type == "templated"
+    assert templated_slices[1].slice_type == "literal"
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[3].slice_type == "literal"
+    assert templated_slices[4].slice_type == "templated"
+    assert templated_slices[5].slice_type == "literal"
+
+
+def test_slice_sqlx_template_with_post_operations_sql_block(templater):
+    """Test slicing with post_operations containing SQL code (original bug report case)."""
+    input_sqlx = """config {
+    type: "table"
+}
+SELECT * FROM ${ref('test')}
+post_operations {
+  BEGIN
+    ALTER TABLE ${self()} DROP PRIMARY KEY IF EXISTS;
+    ALTER TABLE ${self()} ADD PRIMARY KEY (some_id, another_id) NOT ENFORCED;
+  END;
+}
+"""
+    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\n"
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 6 slices: config, \nSELECT..., ${ref}, \n, post_operations, \n
+    assert len(raw_slices) == 6
+    assert raw_slices[0].raw.startswith("config")
+    assert raw_slices[1].raw == "\nSELECT * FROM "
+    assert raw_slices[2].raw == "${ref('test')}"
+    assert raw_slices[3].raw == "\n"
+    assert raw_slices[4].raw.startswith("post_operations")
+    assert raw_slices[5].raw == "\n"
+
+    assert len(templated_slices) == 6
+    assert templated_slices[0].slice_type == "templated"
+    assert templated_slices[1].slice_type == "literal"
+    assert templated_slices[2].slice_type == "templated"
+    assert templated_slices[3].slice_type == "literal"
+    assert templated_slices[4].slice_type == "templated"
+    assert templated_slices[5].slice_type == "literal"
+
+
+def test_slice_sqlx_template_with_nested_js_expression(templater):
+    """Test slicing with JavaScript expressions containing nested braces (location.sqlx case)."""
+    input_sqlx = """SELECT
+  CAST(code AS STRING) AS location_id,
+  e.${ingestion.getTechnicalIngestionTimestamp({source: 'kafka'})} AS raw_source_ingestion_date_time,
+  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time
+FROM
+  ${ ref({ name: "source_table_v1", schema: "kafka__raw__events" }) } AS e
+"""
+    expected_sql = """SELECT
+  CAST(code AS STRING) AS location_id,
+  e.js_expression AS raw_source_ingestion_date_time,
+  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time
+FROM
+  `my_project.kafka__raw__events.source_table_v1` AS e
+"""
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 5 slices: literal, ${ingestion...}, literal, ${ref(...)}, literal
+    assert len(raw_slices) == 5
+    assert raw_slices[0].raw == "SELECT\n  CAST(code AS STRING) AS location_id,\n  e."
+    assert raw_slices[1].raw == "${ingestion.getTechnicalIngestionTimestamp({source: 'kafka'})}"
+    assert raw_slices[2].raw == " AS raw_source_ingestion_date_time,\n  CURRENT_TIMESTAMP() AS raw_dataform_processing_date_time\nFROM\n  "
+    assert raw_slices[3].raw == '${ ref({ name: "source_table_v1", schema: "kafka__raw__events" }) }'
+    assert raw_slices[4].raw == " AS e\n"
+
+    assert len(templated_slices) == 5
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+    assert templated_slices[3].slice_type == "templated"
+    assert templated_slices[4].slice_type == "literal"
+
+
+def test_slice_sqlx_template_with_when_expression_two_params(templater):
+    """Test slicing with WHEN expression containing two parameters (work_item.sqlx case)."""
+    input_sqlx = """SELECT
+  item_id,
+  rawSourceIngestionDateTime
+FROM combined_items
+WHERE
+  rawSourceIngestionDateTime > ${when(incremental(), `event_timestamp_checkpoint`, `timestamp('0001-01-01')`) }
+
+QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)
+"""
+    expected_sql = """SELECT
+  item_id,
+  rawSourceIngestionDateTime
+FROM combined_items
+WHERE
+  rawSourceIngestionDateTime > `timestamp('0001-01-01')`
+
+QUALIFY
+  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)
+"""
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+
+    # Should have 3 slices: literal, ${when...}, literal
+    assert len(raw_slices) == 3
+    assert raw_slices[0].raw == "SELECT\n  item_id,\n  rawSourceIngestionDateTime\nFROM combined_items\nWHERE\n  rawSourceIngestionDateTime > "
+    assert raw_slices[1].raw == "${when(incremental(), `event_timestamp_checkpoint`, `timestamp('0001-01-01')`) }"
+    assert raw_slices[2].raw == "\n\nQUALIFY\n  1 = ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY rawSourceIngestionDateTime DESC)\n"
+
+    assert len(templated_slices) == 3
+    assert templated_slices[0].slice_type == "literal"
+    assert templated_slices[1].slice_type == "templated"
+    assert templated_slices[2].slice_type == "literal"
+
 
 def test_process_sqlx_with_config_and_ref(templater):
     input_sqlx = """config {
