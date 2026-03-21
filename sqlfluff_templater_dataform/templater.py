@@ -136,7 +136,7 @@ class DataformTemplater(RawTemplater):
         Returns:
             The input string with all Dataform blocks removed
         """
-        block_keywords = ['config', 'pre_operations', 'post_operations', 'js']
+        block_keywords = ['config', 'js']
         for keyword in block_keywords:
             pattern = rf'{re.escape(keyword)}\s*\{{'
             while True:
@@ -147,6 +147,27 @@ class DataformTemplater(RawTemplater):
                 end = self.find_block_end(in_str, start)
                 if end != -1:
                     in_str = in_str[:match.start()] + in_str[end:]
+                else:
+                    break  # invalid, stop
+        return in_str
+
+    def extract_operation_blocks(self, in_str: str) -> str:
+        """Extract SQL from pre/post_operations blocks and append a semicolon if missing."""
+        block_keywords = ['pre_operations', 'post_operations']
+        for keyword in block_keywords:
+            pattern = rf'{re.escape(keyword)}\s*\{{'
+            while True:
+                match = re.search(pattern, in_str)
+                if not match:
+                    break
+                start = match.end() - 1  # position of {
+                end = self.find_block_end(in_str, start)
+                if end != -1:
+                    inner_sql = in_str[start+1:end-1].strip()
+                    if inner_sql and not inner_sql.endswith(";"):
+                        inner_sql += ";"
+                    replacement = f"\n{inner_sql}\n" if inner_sql else ""
+                    in_str = in_str[:match.start()] + replacement + in_str[end:]
                 else:
                     break  # invalid, stop
         return in_str
@@ -427,6 +448,7 @@ class DataformTemplater(RawTemplater):
             - templated_slices: List of TemplatedFileSlice objects for mapping
         """
         replaced_sql = self.replace_blocks(sql)
+        replaced_sql = self.extract_operation_blocks(replaced_sql)
         replaced_sql = self.replace_self_with_bq_table(replaced_sql)
         replaced_sql = self.replace_ref_with_bq_table(replaced_sql)
         replaced_sql = self.replace_incremental_condition(replaced_sql)
@@ -532,7 +554,33 @@ class DataformTemplater(RawTemplater):
 
             match_raw = sql[next_match_start:next_match_end]
 
-            if next_match_type == 'templated' and match_raw.startswith('${') and 'ref(' in match_raw:
+            if next_match_type == 'templated' and re.match(r'^(pre_operations|post_operations)\s*\{', match_raw):
+                brace_start = match_raw.find('{')
+                inner_sql = match_raw[brace_start+1:-1].strip()
+                if inner_sql and not inner_sql.endswith(";"):
+                    inner_sql += ";"
+                
+                op_replaced = inner_sql
+                if op_replaced:
+                    op_replaced = self.replace_self_with_bq_table(op_replaced)
+                    op_replaced = self.replace_ref_with_bq_table(op_replaced)
+                    op_replaced = self.replace_incremental_condition(op_replaced)
+                    op_replaced = self.replace_js_expressions(op_replaced)
+                    op_replaced = f"\n{op_replaced}\n"
+                
+                raw_slices.append(RawFileSlice(
+                    raw=match_raw,
+                    slice_type='templated',
+                    source_idx=next_match_start,
+                    block_idx=block_idx
+                ))
+                templated_slices.append(TemplatedFileSlice(
+                    slice_type=next_match_type,
+                    source_slice=slice(next_match_start, next_match_end),
+                    templated_slice=slice(templated_idx, templated_idx + len(op_replaced))
+                ))
+                templated_idx += len(op_replaced)
+            elif next_match_type == 'templated' and match_raw.startswith('${') and 'ref(' in match_raw:
                 ref_replaced = self.replace_ref_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
