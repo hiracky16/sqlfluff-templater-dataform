@@ -58,40 +58,18 @@ def test_replace_self_with_bq_table(templater):
                 ""
         ),
         (
-                """pre_operations {
-                CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
-                    RETURNS FLOAT64
-                    AS ((x + 4) / y);
-                }""",
-                ""
-        ),
-        (
-                """post_operations {
-                GRANT `roles/bigquery.dataViewer`
-                ON
-                TABLE ${self()}
-                TO "group:allusers@example.com", "user:otheruser@example.com"
+                """js {
+                const a = 1;
                 }""",
                 ""
         ),
         (
                 """config {
                 type: "table",
-                columns: {
-                    "test" : "test",
-                    "value:: "value"
-                }
-                } pre_operations {
-                CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
-                    RETURNS FLOAT64
-                    AS ((x + 4) / y);
-                } post_operations {
-                GRANT `roles/bigquery.dataViewer`
-                ON
-                TABLE ${self()}
-                TO "group:allusers@example.com", "user:otheruser@example.com"
+                } js {
+                const b = 2;
                 }""",
-                "  "
+                " "
         ),
     ]
 )
@@ -101,6 +79,25 @@ def test_replace_blocks(templater, test_block, replaced_sql):
     expected_sql = f"{replaced_sql} {sql_body}"
     result = templater.replace_blocks(input_sql)
     assert result == expected_sql
+
+
+def test_extract_operation_blocks(templater):
+    input_sql = """pre_operations {
+    CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
+        RETURNS FLOAT64
+        AS ((x + 4) / y)
+    } post_operations {
+    GRANT `roles/bigquery.dataViewer`
+    ON
+    TABLE ${self()}
+    TO "group:allusers@example.com", "user:otheruser@example.com";
+    } SELECT * FROM my_table"""
+
+    expected_sql = '\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\n        RETURNS FLOAT64\n        AS ((x + 4) / y);\n \nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE ${self()}\n    TO "group:allusers@example.com", "user:otheruser@example.com";\n SELECT * FROM my_table'
+    
+    result = templater.extract_operation_blocks(input_sql)
+    assert result == expected_sql
+
 
 
 # slice_sqlx_template のテスト
@@ -275,7 +272,7 @@ post_operations {
   }
 }
 """
-    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\n"
+    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\nif (true) {\n    const result = `my_project.my_dataset.self`;\n    if (result) {\n      console.log('nested');\n    }\n  };\n\n"
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
@@ -310,7 +307,7 @@ post_operations {
   END;
 }
 """
-    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\n"
+    expected_sql = "\nSELECT * FROM `my_project.my_dataset.test`\n\nBEGIN\n    ALTER TABLE `my_project.my_dataset.self` DROP PRIMARY KEY IF EXISTS;\n    ALTER TABLE `my_project.my_dataset.self` ADD PRIMARY KEY (some_id, another_id) NOT ENFORCED;\n  END;\n\n"
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
 
@@ -470,7 +467,7 @@ SELECT * FROM ${ref('test')} JOIN ${ref('other_table')} ON test.id = other_table
         (
             "config_pre_post_ref.sqlx",
             {
-                "expected_sql": "\n\n\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
+                "expected_sql": "\n\nCREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)\nRETURNS FLOAT64\nAS ((x + 4) / y);\n\n\nGRANT `roles/bigquery.dataViewer`\n    ON\n    TABLE `my_project.my_dataset.self`\n    TO \"group:allusers@example.com\", \"user:otheruser@example.com\";\n\nSELECT * FROM `my_project.my_dataset.test` WHERE true\n",
                 "raw_slices": {
                     "len": 8,
                     "raw_starts": [
@@ -569,5 +566,3 @@ SELECT ${column_name} FROM ${self()}
 
     assert templated_slices[2].slice_type == "templated"
     assert templated_slices[4].slice_type == "templated"
-
-
