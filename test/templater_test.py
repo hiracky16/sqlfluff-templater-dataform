@@ -571,3 +571,45 @@ SELECT ${column_name} FROM ${self()}
     assert templated_slices[4].slice_type == "templated"
 
 
+def test_slice_sqlx_template_with_when_containing_nested_self(templater):
+    """${when()} block whose body contains ${self()} should be sliced correctly.
+
+    The non-greedy regex ``\\$\\{\\s*when\\((.*?)\\)\\s*\\}`` would otherwise
+    close at the inner ``${self()}``'s ``)}``, undercounting the templated
+    slice length and producing "Length of templated file mismatch with final
+    slice" during lint.
+    """
+    input_sqlx = """SELECT 1 AS x
+${when(incremental(),
+    `WHERE updated_at > (SELECT MAX(t) FROM ${self()})`)}
+"""
+    expected_sql = "SELECT 1 AS x\n\n"
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+    # Final slice's stop must equal the replaced length.
+    assert templated_slices[-1].templated_slice.stop == len(replaced_sql)
+
+
+def test_slice_sqlx_template_with_multiline_ref(templater):
+    """``${\\n  ref(...)\\n}`` should match across newlines.
+
+    Without DOTALL the regex fails to match, the global pass falls through to
+    ``replace_js_expressions`` which substitutes ``js_expression``, but the
+    slicing dispatch sees ``ref(`` in the raw match and returns the unchanged
+    block. The resulting slice length disagrees with the replaced length.
+    """
+    input_sqlx = """SELECT * FROM ${
+  ref({
+    schema: "checkmate_events",
+    name: "extension_installed"
+  })
+} e
+"""
+    expected_sql = (
+        "SELECT * FROM `my_project.checkmate_events.extension_installed` e\n"
+    )
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+    assert templated_slices[-1].templated_slice.stop == len(replaced_sql)
+
+
