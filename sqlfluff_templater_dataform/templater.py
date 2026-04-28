@@ -22,7 +22,7 @@ PRE_OPERATION_BLOCK_PATTERN = r'pre_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\
 POST_OPERATION_BLOCK_PATTERN = r'post_operations\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}'
 JS_BLOCK_PATTERN = r'\s*js\s*\{(?:[^{}]|\{[^{}]*\})*\}'
 JS_EXPRESSION_PATTERN_IN_SQL = r'\$\{'
-REF_PATTERN = r'\$\{\s*ref\((.*?)\)\s*\}'
+REF_PATTERN = r'(?s)\$\{\s*ref\((.*?)\)\s*\}'
 SELF_PATTERN = r'\$\{\s*self\(\s*\)\s*\}'
 INCREMENTAL_CONDITION_PATTERN = r'\$\{\s*when\((.*?)\)\s*\}'
 
@@ -532,7 +532,12 @@ class DataformTemplater(RawTemplater):
 
             match_raw = sql[next_match_start:next_match_end]
 
-            if next_match_type == 'templated' and match_raw.startswith('${') and 'ref(' in match_raw:
+            # Dispatch on the construct that BEGINS the matched block. A
+            # ${when(...)} block can wrap ${self()} / ${ref()}; substring
+            # checks ('self(' in match_raw) would mis-route to the inner
+            # construct's branch and consume the entire outer block under
+            # the wrong replacement, breaking templated-slice lengths.
+            if next_match_type == 'templated' and re.match(r'\$\{\s*ref\(', match_raw):
                 ref_replaced = self.replace_ref_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
@@ -546,7 +551,7 @@ class DataformTemplater(RawTemplater):
                     templated_slice=slice(templated_idx, templated_idx + len(ref_replaced))
                 ))
                 templated_idx += len(ref_replaced)
-            elif next_match_type == 'templated' and match_raw.startswith('${') and 'self(' in match_raw:
+            elif next_match_type == 'templated' and re.match(r'\$\{\s*self\(', match_raw):
                 self_replaced = self.replace_self_with_bq_table(match_raw)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
@@ -560,8 +565,12 @@ class DataformTemplater(RawTemplater):
                     templated_slice=slice(templated_idx, templated_idx + len(self_replaced))
                 ))
                 templated_idx += len(self_replaced)
-            elif next_match_type == 'templated' and match_raw.startswith('${') and 'when(' in match_raw:
-                when_replaced = self.replace_incremental_condition(match_raw)
+            elif next_match_type == 'templated' and re.match(r'\$\{\s*when\(', match_raw):
+                # Resolve nested ${self()} / ${ref()} first — INCREMENTAL_CONDITION_PATTERN
+                # is non-greedy and would otherwise close the match at the inner `)}`.
+                # Mirrors the global pass order in slice_sqlx_template above.
+                pre = self.replace_ref_with_bq_table(self.replace_self_with_bq_table(match_raw))
+                when_replaced = self.replace_incremental_condition(pre)
                 raw_slices.append(RawFileSlice(
                     raw=match_raw,
                     slice_type='templated',
