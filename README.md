@@ -17,3 +17,19 @@ templater = dataform
 dialect = bigquery
 sql_file_exts = .sql,.sqlx
 ```
+
+
+## Development
+
+With [mise](https://mise.jdx.dev) installed, run `mise install` from the repo
+root once to provision Python, `uv`, and a `.venv` directory. The first
+install fires a `postinstall` hook that runs `mise run sync`, which installs
+the test dependencies into the venv. After that:
+
+```bash
+mise run test     # run the test suite
+mise run sync     # re-install deps after pulling changes to requirements.txt
+pytest test/      # or invoke pytest directly (the venv is auto-activated)
+```
+
+The `compose.yml` / `Dockerfile.dev` setup remains for those who prefer it.
