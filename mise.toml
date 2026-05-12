@@ -1,0 +1,17 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[hooks]
+postinstall = "mise run sync"
+
+[tasks.sync]
+description = "Install Python dependencies into the venv (re-run after pulling changes)"
+run = "uv pip install -r requirements.txt -e ."
+
+[tasks.test]
+description = "Run the test suite"
+run = "pytest test/ -v"
