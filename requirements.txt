@@ -1,34 +1,34 @@
 # Install with -U to keep all requirements up-to-date
 # code linting and formatting
-flake8
-flake8-docstrings
-pydocstyle!=6.2.0, !=6.2.1  # See: https://github.com/PyCQA/pydocstyle/issues/618
-black>=22.1.0
-flake8-black>=0.4.0
-ruff
-import-linter
+flake8==7.3.0
+flake8-docstrings==1.7.0
+pydocstyle==6.3.0  # See: https://github.com/PyCQA/pydocstyle/issues/618
+black==26.5.1
+flake8-black==0.4.0
+ruff==0.15.16
+import-linter==2.11
 # documentation checks
-doc8
-Pygments
+doc8==2.0.0
+Pygments==2.20.0
 # testing
-coverage>=6.4
-hypothesis
-pytest
-pytest-cov
-pytest-xdist
+coverage==7.14.1
+hypothesis==6.155.2
+pytest==9.0.3
+pytest-cov==7.1.0
+pytest-xdist==3.8.0
 # MyPy
-mypy
-types-toml
-types-setuptools
-types-chardet
-types-appdirs
-types-colorama
-types-pyyaml
-types-Jinja2
-types-regex
-types-tqdm
+mypy==2.1.0
+types-toml==0.10.8.20260518
+types-setuptools==82.0.0.20260518
+types-chardet==5.0.4.6
+types-appdirs==1.4.3.5
+types-colorama==0.4.15.20260508
+types-pyyaml==6.0.12.20260518
+types-Jinja2==2.11.9
+types-regex==2026.5.9.20260518
+types-tqdm==4.67.3.20260518
 # Requests is required for the util script
-requests
-ghapi
-yamllint
+requests==2.34.2
+ghapi==1.0.13
+yamllint==1.38.0
 sqlfluff==4.1.0
