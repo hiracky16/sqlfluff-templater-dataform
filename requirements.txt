@@ -3,32 +3,32 @@
 flake8==7.3.0
 flake8-docstrings==1.7.0
 pydocstyle==6.3.0  # See: https://github.com/PyCQA/pydocstyle/issues/618
-black==26.5.1
+black==25.11.0
 flake8-black==0.4.0
 ruff==0.15.16
-import-linter==2.11
+import-linter==2.5.2
 # documentation checks
-doc8==2.0.0
+doc8==1.1.2
 Pygments==2.20.0
 # testing
-coverage==7.14.1
-hypothesis==6.155.2
-pytest==9.0.3
+coverage==7.10.7
+hypothesis==6.141.1
+pytest==8.4.2
 pytest-cov==7.1.0
 pytest-xdist==3.8.0
 # MyPy
-mypy==2.1.0
-types-toml==0.10.8.20260518
-types-setuptools==82.0.0.20260518
+mypy==1.19.1
+types-toml==0.10.8.20240310
+types-setuptools==81.0.0.20260209
 types-chardet==5.0.4.6
 types-appdirs==1.4.3.5
-types-colorama==0.4.15.20260508
-types-pyyaml==6.0.12.20260518
+types-colorama==0.4.15.20250801
+types-pyyaml==6.0.12.20250915
 types-Jinja2==2.11.9
-types-regex==2026.5.9.20260518
-types-tqdm==4.67.3.20260518
+types-regex==2026.1.15.20260116
+types-tqdm==4.67.3.20260205
 # Requests is required for the util script
-requests==2.34.2
+requests==2.32.5
 ghapi==1.0.13
-yamllint==1.38.0
+yamllint==1.37.1
 sqlfluff==4.1.0
