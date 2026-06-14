@@ -10,8 +10,8 @@ postinstall = "mise run sync"
 
 [tasks.sync]
 description = "Install Python dependencies into the venv (re-run after pulling changes)"
-run = "uv pip install -r requirements.txt -e ."
+run = "uv sync"
 
 [tasks.test]
 description = "Run the test suite"
-run = "pytest test/ -v"
+run = "uv run pytest test/ -v"

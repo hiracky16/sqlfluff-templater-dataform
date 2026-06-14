@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sqlfluff-templater-dataform"
 version = "0.1.12"
@@ -7,6 +11,7 @@ authors = [
   {name = "hiracky16"},
 ]
 license = {file = "LICENSE.md"}
+requires-python = ">=3.9"
 keywords = [
     "sqlfluff",
     "sql",
@@ -19,11 +24,45 @@ dependencies = [
     "sqlfluff==4.1.0"
 ]
 
+[dependency-groups]
+dev = [
+    "flake8",
+    "flake8-docstrings",
+    "pydocstyle!=6.2.0, !=6.2.1",
+    "black>=22.1.0",
+    "flake8-black>=0.4.0",
+    "ruff",
+    "import-linter",
+    "doc8",
+    "Pygments",
+    "coverage>=6.4",
+    "hypothesis",
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "mypy",
+    "types-toml",
+    "types-setuptools",
+    "types-chardet",
+    "types-appdirs",
+    "types-colorama",
+    "types-pyyaml",
+    "types-Jinja2",
+    "types-regex",
+    "types-tqdm",
+    "requests",
+    "ghapi",
+    "yamllint",
+ ]
+
 [project.entry-points.sqlfluff]
 sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
 
 [tool.setuptools.packages.find]
 include = ["sqlfluff_templater_dataform"]
+
+[tool.uv]
+exclude-newer = "7 days"
 
 [project.urls]
 Repository = "https://github.com/hiracky16/sqlfluff-templater-dataform.git"
