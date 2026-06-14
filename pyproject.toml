@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sqlfluff-templater-dataform"
 version = "0.1.12"
@@ -49,7 +53,7 @@ dev = [
     "requests",
     "ghapi",
     "yamllint",
-]
+ ]
 
 [project.entry-points.sqlfluff]
 sqlfluff_templater_dataform = "sqlfluff_templater_dataform"
