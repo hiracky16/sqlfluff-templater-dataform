@@ -13,8 +13,8 @@ ENV UV_LINK_MODE=copy
 
 # Install requirements separately
 # to take advantage of layer caching.
-COPY requirements*.txt .
-RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system -r requirements.txt
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-install-project
 
 # Set up dataform-related dependencies.
 # RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system dataform-postgres
@@ -22,5 +22,5 @@ RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system -r require
 # Copy everything. (Note: If needed, we can use .dockerignore to limit what's copied.)
 COPY . .
 
-# Install sqlfluff and the dbt templater in editable mode.
-RUN uv pip install --system -e .
+# Install the project and all dependencies.
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
