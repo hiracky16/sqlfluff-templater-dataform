@@ -315,63 +315,87 @@ class DataformTemplater(RawTemplater):
 
         return re.sub(pattern, self_to_table, sql)
 
-    def replace_incremental_condition(self, sql: str):
-        pattern = re.compile(INCREMENTAL_CONDITION_PATTERN, re.DOTALL)
-        def replace_when(match):
-            # For linting purposes, we assume non-incremental mode
-            # when(condition, value) with one param: return empty (non-incremental)
-            # when(condition, value1, value2) with two params: return value2 (fallback)
-            
-            content = match.group(1)  # Everything inside when(...)
-            
-            # Split by comma, but be careful with quoted strings
-            params = []
-            current_param = ''
-            in_backtick = False
-            in_double_quote = False
-            in_single_quote = False
-            paren_depth = 0
-            
-            i = 0
-            while i < len(content):
-                char = content[i]
-                if char == '`' and not in_double_quote and not in_single_quote:
-                    in_backtick = not in_backtick
-                elif char == '"' and not in_backtick and not in_single_quote:
-                    in_double_quote = not in_double_quote
-                elif char == "'" and not in_backtick and not in_double_quote:
-                    in_single_quote = not in_single_quote
-                elif char == '(' and not in_backtick and not in_double_quote and not in_single_quote:
-                    paren_depth += 1
-                elif char == ')' and not in_backtick and not in_double_quote and not in_single_quote:
-                    paren_depth -= 1
-                elif char == ',' and not in_backtick and not in_double_quote and not in_single_quote and paren_depth == 0:
-                    params.append(current_param.strip())
-                    current_param = ''
-                    i += 1
-                    continue
-                current_param += char
-                i += 1
-            
-            if current_param.strip():
-                params.append(current_param.strip())
-            
-            # Remove the condition (first parameter)
-            if len(params) > 1:
-                value_params = params[1:]
-            else:
-                value_params = params
-            
-            if len(value_params) == 0:
-                return ''  # No value parameters
-            elif len(value_params) == 1:
-                # Single value parameter: return empty (non-incremental mode)
-                return ''
-            else:
-                # Multiple value parameters: return the last one (fallback)
-                return value_params[-1]
+    def _process_when_content(self, content: str) -> str:
+        # Split by comma, but be careful with quoted strings
+        params = []
+        current_param = ''
+        in_backtick = False
+        in_double_quote = False
+        in_single_quote = False
+        paren_depth = 0
         
-        return re.sub(pattern, replace_when, sql)
+        i = 0
+        while i < len(content):
+            char = content[i]
+            if char == '`' and not in_double_quote and not in_single_quote:
+                in_backtick = not in_backtick
+            elif char == '"' and not in_backtick and not in_single_quote:
+                in_double_quote = not in_double_quote
+            elif char == "'" and not in_backtick and not in_double_quote:
+                in_single_quote = not in_single_quote
+            elif char == '(' and not in_backtick and not in_double_quote and not in_single_quote:
+                paren_depth += 1
+            elif char == ')' and not in_backtick and not in_double_quote and not in_single_quote:
+                paren_depth -= 1
+            elif char == ',' and not in_backtick and not in_double_quote and not in_single_quote and paren_depth == 0:
+                params.append(current_param.strip())
+                current_param = ''
+                i += 1
+                continue
+            current_param += char
+            i += 1
+        
+        if current_param.strip():
+            params.append(current_param.strip())
+        
+        # Remove the condition (first parameter)
+        if len(params) > 1:
+            value_params = params[1:]
+        else:
+            value_params = params
+        
+        if len(value_params) == 0:
+            return ''  # No value parameters
+        elif len(value_params) == 1:
+            # Single value parameter: return empty (non-incremental mode)
+            return ''
+        else:
+            # Multiple value parameters: return the last one (fallback)
+            return value_params[-1]
+
+    def replace_incremental_condition(self, sql: str) -> str:
+        """Replace incremental conditions with their fallback values or empty.
+        
+        This method uses brace-counting to handle when expressions that contain
+        nested template literals or function calls.
+        """
+        result = []
+        i = 0
+        pattern = re.compile(r'\$\{\s*when\(')
+        while i < len(sql):
+            match = pattern.match(sql, i)
+            if match:
+                start_idx = i
+                expr_start = sql.find('{', start_idx)
+                end = self.find_expression_end(sql, expr_start)
+                if end != -1:
+                    match_raw = sql[start_idx:end]
+                    # We need to extract the content inside when(...)
+                    first_paren = sql.find('(', start_idx)
+                    content = match_raw[first_paren - start_idx + 1:]
+                    content = content.rstrip()
+                    if content.endswith('}'):
+                        content = content[:-1].rstrip()
+                    if content.endswith(')'):
+                        content = content[:-1]
+                    
+                    replaced_val = self._process_when_content(content)
+                    result.append(replaced_val)
+                    i = end
+                    continue
+            result.append(sql[i])
+            i += 1
+        return ''.join(result)
 
     def replace_js_expressions(self, sql: str) -> str:
         """Replace JavaScript expressions with placeholders.
@@ -472,6 +496,19 @@ class DataformTemplater(RawTemplater):
                             match_end = end
                         else:
                             continue  # invalid block, skip
+                    else:
+                        continue
+                elif pattern == INCREMENTAL_CONDITION_PATTERN:
+                    # Special handling for incremental conditions: find ${when(, then find matching }
+                    match = re.search(r'\$\{\s*when\(', sql[current_idx:])
+                    if match:
+                        match_start = current_idx + match.start()
+                        expr_start = sql.find('{', match_start)
+                        end = self.find_expression_end(sql, expr_start)
+                        if end != -1:
+                            match_end = end
+                        else:
+                            continue  # invalid expression, skip
                     else:
                         continue
                 elif pattern == JS_EXPRESSION_PATTERN_IN_SQL:
