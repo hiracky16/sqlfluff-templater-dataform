@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sqlfluff-templater-dataform"
-version = "0.1.12"
+version = "0.1.13"
 description = "Lint your dataform project SQL"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
