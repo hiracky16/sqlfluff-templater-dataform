@@ -611,3 +611,27 @@ def test_slice_sqlx_template_with_multiline_ref(templater):
     replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
     assert replaced_sql == expected_sql
     assert templated_slices[-1].templated_slice.stop == len(replaced_sql)
+
+
+def test_slice_sqlx_template_with_nested_when_expression(templater):
+    """Test when expression with nested template literals and function calls is sliced correctly."""
+    input_sqlx = """js {
+  const buildCte = () => `select 1 as id`;
+  const cteStr = `select 1 as id`;
+}
+
+config {
+    type: "incremental",
+}
+
+${when(incremental(), `with cte1 as (${buildCte()})`)}
+
+${when(incremental(), `, cte2 as (${cteStr})`)}
+
+SELECT 'hello world'
+"""
+    expected_sql = "\n\n\n\n\n\n\n\nSELECT 'hello world'\n"
+    replaced_sql, raw_slices, templated_slices = templater.slice_sqlx_template(input_sqlx)
+    assert replaced_sql == expected_sql
+    assert templated_slices[-1].templated_slice.stop == len(replaced_sql)
+
